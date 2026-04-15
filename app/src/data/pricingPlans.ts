@@ -1,0 +1,70 @@
+import type { PricingPlan } from '../types/pricing';
+
+export const PRICING_PLANS: PricingPlan[] = [
+  {
+    tier: 'free',
+    name: '무료',
+    nameEn: 'Free',
+    price: '₩0',
+    priceNote: '영원히 무료',
+    features: [
+      '마크다운 편집 + 실시간 미리보기',
+      '3개 폴더, 폴더당 10개 파일',
+      '2종 디자인 템플릿',
+      '프리미엄 기능 하루 5회 체험',
+    ],
+    limits: {
+      maxFolders: 3,
+      maxFilesPerFolder: 10,
+      dailyPremiumActions: 5,
+      designTemplates: 2,
+    },
+    cta: '무료로 시작하기',
+    highlighted: false,
+  },
+  {
+    tier: 'monthly',
+    name: '월간 구독',
+    nameEn: 'Monthly',
+    price: '₩9,900',
+    priceNote: '매월 결제',
+    features: [
+      '무료 플랜의 모든 기능',
+      '무제한 폴더 & 파일',
+      '6종 디자인 템플릿',
+      'PDF/HTML 내보내기 무제한',
+      'LLM 연동 + Wiki 생성 무제한',
+      '외부 링크 공유 무제한',
+    ],
+    limits: {
+      maxFolders: Infinity,
+      maxFilesPerFolder: Infinity,
+      dailyPremiumActions: Infinity,
+      designTemplates: 6,
+    },
+    cta: '구독 시작하기',
+    highlighted: true,
+  },
+  {
+    tier: 'lifetime',
+    name: '평생 구독',
+    nameEn: 'Lifetime',
+    price: '₩99,000',
+    priceNote: '1회 결제, 평생 사용',
+    features: [
+      '월간 구독의 모든 기능',
+      '커스텀 디자인 템플릿',
+      '우선 지원',
+      '새 기능 얼리 액세스',
+      '평생 업데이트 보장',
+    ],
+    limits: {
+      maxFolders: Infinity,
+      maxFilesPerFolder: Infinity,
+      dailyPremiumActions: Infinity,
+      designTemplates: 99,
+    },
+    cta: '평생 구독하기',
+    highlighted: false,
+  },
+];

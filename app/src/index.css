@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Noto+Serif+KR:wght@400;700&family=Source+Serif+4:ital,wght@0,400;0,700;0,800;1,400&display=swap');
+
+@import "tailwindcss";
+
+/* ── Tailwind v4: theme override ── */
+@theme {
+  --color-primary: #1A202C;
+  --color-primary-foreground: #FFFFFF;
+  --color-accent: #10B981;
+  --color-accent-foreground: #FFFFFF;
+  --color-background: #FFFFFF;
+  --color-muted: #F7FAFC;
+  --color-border: #E2E8F0;
+  --font-sans: 'Inter', 'Public Sans', sans-serif;
+  --font-serif: 'Source Serif 4', 'Noto Serif KR', serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* ── 기본 스타일 ── */
+body {
+  background-color: var(--color-background);
+  color: var(--color-primary);
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
+  color: var(--color-primary);
+  letter-spacing: -0.02em;
+}
+
+/* ── 글로벌 스크롤바 ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E0;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #A0AEC0;
+}
