@@ -48,7 +48,7 @@ npm run dev
 
 ## Reporting Issues
 
-버그 리포트나 기능 요청은 [Issues](https://github.com/asderio-coway/docwise/issues)를 통해 제출해 주세요.
+버그 리포트나 기능 요청은 [Issues](https://github.com/noleji-ai/docwise/issues)를 통해 제출해 주세요.
 
 ## License
 

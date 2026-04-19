@@ -3,12 +3,13 @@ import {
   FolderOpen, Folder, Settings, ChevronRight, Printer,
   Layout, BookOpen, X, FileCode, Code2, Download, FileDown,
   Sliders, Sun, Moon, Move, Check, AlertCircle, ExternalLink,
-  PanelLeftClose, PanelLeftOpen, Trash2, Pencil, Import, Brain, Sparkles,
-  FolderPlus, FilePlus, Palette
+  PanelLeftClose, PanelLeftOpen, Trash2, Pencil, Import, Brain, Sparkles, Save,
+  FolderPlus, FilePlus, Palette, Eye
 } from 'lucide-react';
 import { useMarkdownParser } from '../hooks/useMarkdownParser';
 import MarkdownToolbar from '../components/MarkdownToolbar';
 import { SAMPLE_CONTENTS } from '../data/sampleContents';
+import { DESIGN_TEMPLATES } from '../data/designTemplates';
 import ContextMenu from '../components/ContextMenu';
 import InlineEdit from '../components/InlineEdit';
 import SettingsModal from '../components/SettingsModal';
@@ -17,14 +18,15 @@ import { type LLMConfig } from '../types/llm';
 import { loadLLMConfig, saveLLMConfig, testConnection } from '../services/llmClient';
 import { ingestFolder } from '../services/wiki';
 import type { WikiPage } from '../services/wiki';
-import { canUsePremiumAction, trackPremiumAction } from '../utils/featureGate';
+import { canUsePremiumAction, trackPremiumAction, getUserPlan } from '../utils/featureGate';
+import { publishToGist, getGithubToken } from '../services/gistStorage';
 import UsageBadge from '../components/UsageBadge';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { getLocalIP } from '../utils/networkUtils';
 
 /**
- * docwise Desktop v4.0
+ * docwise Desktop v1.0
  * 1. Obsidian-style Markdown Editing Toolbar
  * 2. Rich h3-h6, hr, blockquote, code, list styling
  * 3. Folder Tree Sidebar + File List
@@ -38,6 +40,7 @@ interface FileItem {
   type: 'md' | 'html';
   date: string;
   content?: string;
+  sourcePath?: string;
 }
 
 interface FolderItem {
@@ -48,15 +51,10 @@ interface FolderItem {
   isKnowledgeFolder?: boolean;
 }
 
-/* ── 디자인 템플릿 ── */
-const DESIGN_TEMPLATES = [
-  { id: 'apple', name: 'Apple Premium', color: '#000000', accent: '#0071E3', font: 'SF Pro, Inter' },
-  { id: 'stripe', name: 'Stripe Elegant', color: '#635BFF', accent: '#00D7FF', font: 'Inter' },
-  { id: 'linear', name: 'Linear Minimal', color: '#5E6AD2', accent: '#8A94E9', font: 'Inter' },
-  { id: 'vercel', name: 'Vercel Precise', color: '#000000', accent: '#000000', font: 'Geist, sans-serif' },
-  { id: 'mistral', name: 'Mistral French', color: '#FF5917', accent: '#7C3AED', font: 'Inter' },
-  { id: 'asome', name: 'Asome Emerald', color: '#1A202C', accent: '#10B981', font: 'Source Serif 4' },
-];
+interface ExternalFileState {
+  savedContent: string;
+  lastSavedAt: number | null;
+}
 
 /* ── 폴더/파일 Mock 데이터 ── */
 const INITIAL_FOLDERS: FolderItem[] = [
@@ -108,6 +106,7 @@ const INITIAL_FOLDERS: FolderItem[] = [
 ];
 
 const A4_HEIGHT_PX = 1122;
+const EXTERNAL_FILES_FOLDER_ID = 'desktop-external-files';
 
 const DEFAULT_MD_CONTENT = SAMPLE_CONTENTS['f1'] || '';
 
@@ -156,6 +155,7 @@ const EditorPage: React.FC = () => {
   const [shareMode, setShareMode] = useState<'internal' | 'external'>('external');
   const [llmConfig, setLLMConfig] = useState<LLMConfig>(() => loadLLMConfig());
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; type: 'folder' | 'file'; targetId: string } | null>(null);
+  const [moveTargetModal, setMoveTargetModal] = useState<{ fileId: string; fileName: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isGeneratingKnowledge, setIsGeneratingKnowledge] = useState(false);
   const [knowledgeProgress, setKnowledgeProgress] = useState('');
@@ -168,9 +168,15 @@ const EditorPage: React.FC = () => {
   const [isDarkPreview, setIsDarkPreview] = useState(false);
   const [showPageGuides, setShowPageGuides] = useState(false);
 
+  // Split pane
+  const [splitRatio, setSplitRatio] = useState(50);
+  const [isDragging, setIsDragging] = useState(false);
+  const splitContainerRef = useRef<HTMLElement>(null);
+
   // Toast / Upload
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [externalFileStates, setExternalFileStates] = useState<Record<string, ExternalFileState>>({});
 
   // unified 파이프라인 파서
   const { setMarkdown, result, isParsing } = useMarkdownParser(250);
@@ -195,6 +201,38 @@ const EditorPage: React.FC = () => {
     }
     return folders[0].files[0];
   }, [folders, selectedFileId]);
+  const isExternalFile = !!currentFile?.sourcePath;
+  const currentExternalFileState = isExternalFile ? externalFileStates[currentFile.id] : undefined;
+  const isExternalDirty = isExternalFile
+    ? content !== (currentExternalFileState?.savedContent ?? SAMPLE_CONTENTS[currentFile.id] ?? '')
+    : false;
+  const externalSaveStatusLabel = isExternalFile
+    ? isExternalDirty
+      ? '저장 필요'
+      : currentExternalFileState?.lastSavedAt
+        ? '저장 완료'
+        : '원본과 동일'
+    : null;
+  const externalSaveStatusTone = isExternalFile
+    ? isExternalDirty
+      ? 'border-amber-200 bg-amber-50 text-amber-700'
+      : 'border-[#10B981]/20 bg-[#ECFDF5] text-[#059669]'
+    : '';
+  const externalSaveStatusMessage = isExternalFile
+    ? isExternalDirty
+      ? '아직 원본 파일에 반영되지 않은 변경사항이 있습니다.'
+      : currentExternalFileState?.lastSavedAt
+        ? `방금 저장됨 · ${new Date(currentExternalFileState.lastSavedAt).toLocaleTimeString('ko-KR', {
+            hour: '2-digit',
+            minute: '2-digit',
+          })}`
+        : '현재 에디터 내용이 원본 파일과 같습니다.'
+    : null;
+
+  const updateEditorContent = useCallback((nextContent: string) => {
+    SAMPLE_CONTENTS[selectedFileId] = nextContent;
+    setContent(nextContent);
+  }, [selectedFileId]);
 
   // 파일 선택 시 샘플 콘텐츠 로드
   useEffect(() => {
@@ -275,17 +313,71 @@ const EditorPage: React.FC = () => {
     }
   }, [selectedFileId, selectedFolderId, folders]);
 
+  const handleMoveFile = useCallback((fileId: string, targetFolderId: string) => {
+    let movedFile: FileItem | null = null;
+    setFolders(prev => {
+      // Find and remove file from source folder
+      const updated = prev.map(f => {
+        const file = f.files.find(file => file.id === fileId);
+        if (file) movedFile = file;
+        return { ...f, files: f.files.filter(file => file.id !== fileId) };
+      });
+      // Add file to target folder
+      if (!movedFile) return prev;
+      return updated.map(f => f.id === targetFolderId ? { ...f, files: [...f.files, movedFile!] } : f);
+    });
+    setMoveTargetModal(null);
+    setToast({ message: '파일이 이동되었습니다.', type: 'success' });
+  }, []);
+
   const handleImportFile = useCallback((folderId: string) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.md,.html,.htm,.txt';
+    input.accept = '.md,.html,.htm,.txt,.png,.jpg,.jpeg,.gif,.svg,.webp';
     input.multiple = true;
     input.onchange = async (e) => {
       const files = (e.target as HTMLInputElement).files;
       if (!files) return;
+
+      // Separate images and text files
+      const imageFiles: File[] = [];
+      const textFiles: File[] = [];
       for (const file of Array.from(files)) {
-        const text = await file.text();
+        if (file.type.startsWith('image/')) {
+          imageFiles.push(file);
+        } else {
+          textFiles.push(file);
+        }
+      }
+
+      // Convert images to base64 map (filename → data URL)
+      const imageMap: Record<string, string> = {};
+      for (const img of imageFiles) {
+        const dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(img);
+        });
+        imageMap[img.name] = dataUrl;
+      }
+
+      // Process text files
+      for (const file of textFiles) {
+        let text = await file.text();
         const type: 'md' | 'html' = (file.name.endsWith('.html') || file.name.endsWith('.htm')) ? 'html' : 'md';
+
+        // Replace relative image paths with base64 data URLs
+        if (type === 'md' && Object.keys(imageMap).length > 0) {
+          text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
+            // Extract filename from path (e.g., "./images/photo.png" → "photo.png")
+            const fileName = src.split('/').pop() || src;
+            if (imageMap[fileName]) {
+              return `![${alt}](${imageMap[fileName]})`;
+            }
+            return match;
+          });
+        }
+
         const newFile: FileItem = {
           id: `file-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           name: file.name, type, date: new Date().toISOString().slice(0, 10),
@@ -295,7 +387,8 @@ const EditorPage: React.FC = () => {
         setSelectedFileId(newFile.id);
         setContent(text);
       }
-      setToast({ message: `${files.length}개 파일 가져오기 완료`, type: 'success' });
+
+      setToast({ message: `${textFiles.length}개 파일 가져오기 완료${imageFiles.length > 0 ? ` (${imageFiles.length}개 이미지 포함)` : ''}`, type: 'success' });
     };
     input.click();
   }, []);
@@ -763,7 +856,26 @@ const EditorPage: React.FC = () => {
   }, [showPageGuides]);
 
   /* ── 핸들러: MD 저장 ── */
-  const handleSaveMD = useCallback(() => {
+  const handleSaveMD = useCallback(async () => {
+    if (currentFile.sourcePath && window.electronAPI?.writeFile) {
+      try {
+        await window.electronAPI.writeFile(currentFile.sourcePath, content);
+        SAMPLE_CONTENTS[currentFile.id] = content;
+        setExternalFileStates((prev) => ({
+          ...prev,
+          [currentFile.id]: {
+            savedContent: content,
+            lastSavedAt: Date.now(),
+          },
+        }));
+        setToast({ message: `${currentFile.name} 원본 파일을 저장했습니다.`, type: 'success' });
+        return;
+      } catch {
+        setToast({ message: '원본 파일 저장 중 오류가 발생했습니다.', type: 'error' });
+        return;
+      }
+    }
+
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -858,15 +970,140 @@ const EditorPage: React.FC = () => {
       URL.revokeObjectURL(url);
       setToast({ message: '공유용 HTML 파일이 다운로드되었습니다. 내부 서버에 업로드하여 공유하세요.', type: 'success' });
     } else {
-      const shareId = Date.now().toString(36);
-      localStorage.setItem('docwise-shared-' + shareId, fullHtml);
-      const ip = await getLocalIP();
-      const shareUrl = `http://${ip}:${window.location.port}/shared/${shareId}`;
-      await navigator.clipboard.writeText(shareUrl);
-      setToast({ message: `공유 링크가 복사되었습니다: ${shareUrl}`, type: 'success' });
+      const plan = getUserPlan();
+      const isPaid = plan === 'monthly' || plan === 'lifetime';
+      const token = isPaid ? getGithubToken() : null;
+
+      if (isPaid && token) {
+        // Paid user with GitHub token → permanent Gist link
+        try {
+          const gistId = await publishToGist(fullHtml, currentFile.name, token);
+          const baseUrl = window.location.hostname === 'localhost'
+            ? `${window.location.protocol}//${window.location.host}`
+            : 'https://noleji-ai.github.io/docwise';
+          const shareUrl = `${baseUrl}/shared/gist:${gistId}`;
+          await navigator.clipboard.writeText(shareUrl);
+          setToast({ message: `영구 링크가 복사되었습니다!`, type: 'success' });
+        } catch (err) {
+          setToast({ message: `Gist 업로드 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`, type: 'error' });
+        }
+      } else {
+        // Free user or no token → local sharing
+        const shareId = Date.now().toString(36);
+        localStorage.setItem('docwise-shared-' + shareId, fullHtml);
+        const ip = await getLocalIP();
+        const shareUrl = `${window.location.protocol}//${ip}:${window.location.port}/shared/${shareId}`;
+        await navigator.clipboard.writeText(shareUrl);
+        const notice = isPaid && !token
+          ? '로컬 링크가 복사되었습니다. (영구 링크는 설정에서 GitHub 토큰을 등록하세요)'
+          : '로컬 링크가 복사되었습니다. (같은 네트워크에서만 접근 가능)';
+        setToast({ message: notice, type: 'success' });
+      }
     }
     setIsUploading(false);
   }, [renderMode, mdSrcDoc, htmlSrcDoc, shareMode, currentFile]);
+
+  // Split pane drag handler
+  const handleSplitMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  // Split pane resize effect
+  useEffect(() => {
+    if (!isDragging) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      const container = splitContainerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const ratio = Math.min(80, Math.max(20, (x / rect.width) * 100));
+      setSplitRatio(ratio);
+    };
+    const handleMouseUp = () => setIsDragging(false);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
+
+  // When the viewer asks the main window to edit a file, load that exact file into the editor state.
+  useEffect(() => {
+    if (!window.electronAPI?.onOpenInEditor) return undefined;
+
+    return window.electronAPI.onOpenInEditor(async (filePath) => {
+      try {
+        const nextContent = await window.electronAPI!.readFile(filePath);
+        const fileName = filePath.split(/[/\\]/).pop() || 'opened-file.md';
+        const normalizedName = fileName.toLowerCase();
+        const type: 'md' | 'html' = normalizedName.endsWith('.html') || normalizedName.endsWith('.htm') ? 'html' : 'md';
+        const fileId = `external:${filePath}`;
+        const importedFile: FileItem = {
+          id: fileId,
+          name: fileName,
+          type,
+          date: new Date().toISOString().slice(0, 10),
+          sourcePath: filePath,
+        };
+
+        SAMPLE_CONTENTS[fileId] = nextContent;
+        setExternalFileStates((prev) => ({
+          ...prev,
+          [fileId]: {
+            savedContent: nextContent,
+            lastSavedAt: null,
+          },
+        }));
+
+        setFolders((prev) => {
+          const externalFolder = prev.find((folder) => folder.id === EXTERNAL_FILES_FOLDER_ID);
+          if (!externalFolder) {
+            return [
+              ...prev,
+              {
+                id: EXTERNAL_FILES_FOLDER_ID,
+                name: '외부에서 연 문서',
+                files: [importedFile],
+              },
+            ];
+          }
+
+          return prev.map((folder) => {
+            if (folder.id !== EXTERNAL_FILES_FOLDER_ID) return folder;
+            return {
+              ...folder,
+              files: [
+                importedFile,
+                ...folder.files.filter((file) => file.id !== fileId),
+              ],
+            };
+          });
+        });
+
+        setSelectedFolderId(EXTERNAL_FILES_FOLDER_ID);
+        setSelectedFileId(fileId);
+        setContent(nextContent);
+        setIsEditorVisible(true);
+        window.electronAPI?.notifyEditorFileReady?.(filePath);
+        setToast({ message: `${fileName} 문서를 에디터에서 열었습니다.`, type: 'success' });
+      } catch {
+        setToast({ message: '문서를 에디터로 여는 중 오류가 발생했습니다.', type: 'error' });
+      }
+    });
+  }, []);
+
+  // Open preview in viewer (Electron) or toggle fullscreen preview (web)
+  const handleOpenPreview = useCallback(() => {
+    const api = (window as any).electronAPI;
+    if (api?.openViewer) {
+      const srcDoc = renderMode === 'md' ? mdSrcDoc : htmlSrcDoc;
+      api.openViewer(srcDoc, currentFile.name);
+    } else {
+      setIsEditorVisible(false);
+    }
+  }, [renderMode, mdSrcDoc, htmlSrcDoc, currentFile.name]);
 
   return (
     <div className="flex h-screen w-screen bg-[#F7FAFC] text-[#1A202C] overflow-hidden selection:bg-[#10B981]/20 font-sans antialiased">
@@ -874,11 +1111,16 @@ const EditorPage: React.FC = () => {
       {/* ═══ 사이드바 ═══ */}
       <aside className="w-72 flex-shrink-0 border-r border-[#E2E8F0] bg-[#F7FAFC] flex flex-col z-20">
         {/* 로고 */}
-        <header className="flex items-center space-x-3 p-5 border-b border-[#E2E8F0]/50 bg-white/50">
-          <div className="w-9 h-9 rounded-xl bg-[#1A202C] flex items-center justify-center text-white font-bold text-lg shadow-xl shadow-black/10">d</div>
-          <div>
-            <h1 className="text-base font-black tracking-tighter uppercase italic">docwise</h1>
-            <p className="text-[8px] text-[#10B981] font-black uppercase tracking-widest leading-none mt-0.5">Desktop v4.0</p>
+        <header className="flex flex-col border-b border-[#E2E8F0]/50 bg-white/50">
+          {/* Traffic light drag area — only visible in Electron */}
+          <div className="h-8 flex-shrink-0 electron-drag electron-titlebar-pad" />
+          {/* Logo row */}
+          <div className="flex items-center space-x-3 px-5 pb-4">
+            <div className="w-9 h-9 rounded-xl bg-[#1A202C] flex items-center justify-center text-white font-bold text-lg shadow-xl shadow-black/10">d</div>
+            <div>
+              <h1 className="text-base font-black tracking-tighter uppercase italic">docwise</h1>
+              <p className="text-[8px] text-[#10B981] font-black uppercase tracking-widest leading-none mt-0.5">Desktop v1.0</p>
+            </div>
           </div>
         </header>
 
@@ -897,6 +1139,8 @@ const EditorPage: React.FC = () => {
                     onClick={() => { setSelectedFolderId(folder.id); if (folder.files.length > 0) setSelectedFileId(folder.files[0].id); }}
                     onDoubleClick={() => handleFolderDoubleClick(folder.id)}
                     onContextMenu={(e) => handleFolderContextMenu(e, folder.id)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => { e.preventDefault(); const fileId = e.dataTransfer.getData('text/plain'); if (fileId) handleMoveFile(fileId, folder.id); }}
                     className={`w-full px-3 py-2 text-[13px] font-semibold rounded-xl transition-all flex items-center space-x-2.5 group ${
                       isSelected ? 'bg-white shadow-sm border border-[#E2E8F0] text-[#1A202C]' : 'text-[#1A202C]/50 hover:bg-white/60 hover:text-[#1A202C]'
                     }`}
@@ -948,6 +1192,8 @@ const EditorPage: React.FC = () => {
             {currentFolder?.files.map((file) => (
               <button
                 key={file.id}
+                draggable="true"
+                onDragStart={(e) => e.dataTransfer.setData('text/plain', file.id)}
                 onClick={() => setSelectedFileId(file.id)}
                 onContextMenu={(e) => handleFileContextMenu(e, file.id)}
                 className={`w-full px-3 py-2.5 text-[13px] rounded-xl transition-all flex items-center space-x-2.5 group ${
@@ -1018,11 +1264,28 @@ const EditorPage: React.FC = () => {
               <button onClick={() => setRenderMode('html')} className={`px-2.5 py-1 text-[9px] font-black rounded-md transition-all ${renderMode === 'html' ? 'bg-white shadow-sm text-amber-500' : 'text-[#1A202C]/30'}`}>HTML</button>
             </div>
             {isParsing && <div className="flex items-center space-x-1"><div className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" /><span className="text-[8px] font-bold text-[#10B981]">PARSING</span></div>}
+            {isExternalFile && externalSaveStatusLabel && (
+              <div className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${externalSaveStatusTone}`}>
+                {externalSaveStatusLabel}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center space-x-1.5">
-            <button onClick={handleSaveMD} className="flex items-center space-x-1 px-2.5 py-1.5 text-[9px] font-black bg-white border border-[#E2E8F0] rounded-lg hover:bg-[#F7FAFC] transition-all active:scale-95">
-              <Download size={12} className="text-[#1A202C]/30" /><span>MD</span>
+            <button
+              onClick={handleSaveMD}
+              title={isExternalFile ? (isExternalDirty ? '원본 파일 저장' : '저장된 상태입니다') : '마크다운 다운로드'}
+              disabled={isExternalFile && !isExternalDirty}
+              className={`flex items-center space-x-1 px-2.5 py-1.5 text-[9px] font-black rounded-lg border transition-all active:scale-95 ${
+                isExternalFile && !isExternalDirty
+                  ? 'bg-[#F7FAFC] border-[#E2E8F0] text-[#1A202C]/35 cursor-not-allowed'
+                  : 'bg-white border-[#E2E8F0] hover:bg-[#F7FAFC]'
+              }`}
+            >
+              {isExternalFile
+                ? <Save size={12} className="text-[#10B981]" />
+                : <Download size={12} className="text-[#1A202C]/30" />}
+              <span>{isExternalFile ? (isExternalDirty ? '저장 필요' : '저장 완료') : 'MD'}</span>
             </button>
             <button onClick={handleExportHTML} className="flex items-center space-x-1 px-2.5 py-1.5 text-[9px] font-black bg-white border border-[#E2E8F0] rounded-lg hover:bg-[#F7FAFC] transition-all active:scale-95">
               <FileDown size={12} className="text-amber-500/60" /><span>HTML</span>
@@ -1030,13 +1293,37 @@ const EditorPage: React.FC = () => {
             <button onClick={handlePrintPDF} className="flex items-center space-x-1.5 px-3 py-1.5 text-[9px] font-black bg-[#1A202C] text-white rounded-lg hover:bg-[#10B981] transition-all shadow-sm active:scale-95">
               <Printer size={12} /><span>PDF</span>
             </button>
+            <div className="w-px h-5 bg-[#E2E8F0] mx-1" />
+            <button onClick={handleOpenPreview} className="flex items-center space-x-1 px-2.5 py-1.5 text-[9px] font-black bg-[#10B981]/10 border border-[#10B981]/30 text-[#10B981] rounded-lg hover:bg-[#10B981]/20 transition-all active:scale-95" title="미리보기 실행">
+              <Eye size={12} /><span>미리보기</span>
+            </button>
             <button onClick={() => setIsInspectorOpen(!isInspectorOpen)} className={`p-1.5 rounded-lg border transition-all ${isInspectorOpen ? 'bg-[#10B981] border-[#10B981] text-white' : 'bg-white border-[#E2E8F0] text-[#1A202C]/30 hover:border-[#10B981]'}`}>
               <Layout size={14} />
             </button>
           </div>
         </header>
 
-        <section className="flex-grow flex overflow-hidden bg-[#F7FAFC]">
+        {isExternalFile && (
+          <div className="border-b border-[#10B981]/15 bg-[#F0FFF4] px-6 py-2.5 flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#10B981]">External Edit Mode</p>
+              <p className="text-[12px] font-semibold text-[#1A202C] truncate">{currentFile.name}</p>
+              <p className="text-[10px] text-[#1A202C]/45 truncate">
+                {currentFile.sourcePath} · 저장 버튼을 누르면 원본 파일에 바로 반영됩니다.
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-1 whitespace-nowrap">
+              <div className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${externalSaveStatusTone}`}>
+                {externalSaveStatusLabel}
+              </div>
+              <div className="text-[10px] font-bold text-[#1A202C]/45">
+                {externalSaveStatusMessage}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <section ref={splitContainerRef} className={`flex-grow flex overflow-hidden bg-[#F7FAFC] ${isDragging ? 'select-none cursor-col-resize' : ''}`}>
           {/* 에디터 접기 버튼 (에디터 숨김 상태) */}
           {!isEditorVisible && (
             <button
@@ -1050,7 +1337,7 @@ const EditorPage: React.FC = () => {
 
           {/* 에디터 영역 */}
           {isEditorVisible && (
-            <div className="w-1/2 h-full border-r border-[#E2E8F0] flex flex-col bg-white">
+            <div className="h-full border-r border-[#E2E8F0] flex flex-col bg-white flex-shrink-0" style={{ width: `${splitRatio}%` }}>
               {/* 에디터 헤더: 라벨 + 접기 버튼 */}
               <div className="h-9 flex-shrink-0 border-b border-[#E2E8F0] bg-[#F7FAFC]/50 flex items-center justify-between px-3">
                 <span className="text-[9px] font-black text-[#1A202C]/25 uppercase tracking-[0.2em]">Editor</span>
@@ -1064,13 +1351,13 @@ const EditorPage: React.FC = () => {
               </div>
               {/* Markdown 툴바 (MD 모드일 때만) */}
               {renderMode === 'md' && (
-                <MarkdownToolbar textareaRef={textareaRef} content={content} setContent={setContent} />
+                <MarkdownToolbar textareaRef={textareaRef} content={content} setContent={updateEditorContent} />
               )}
               <textarea
                 ref={textareaRef}
                 className="flex-grow p-8 bg-transparent border-none focus:ring-0 focus:outline-none text-[14px] font-mono leading-relaxed text-[#1A202C]/70 resize-none placeholder-[#1A202C]/15 custom-scrollbar"
                 value={content}
-                onChange={(e) => setContent(e.target.value)}
+                onChange={(e) => updateEditorContent(e.target.value)}
                 spellCheck={false}
                 placeholder="마크다운 또는 HTML을 작성하세요..."
               />
@@ -1083,14 +1370,22 @@ const EditorPage: React.FC = () => {
             </div>
           )}
 
+          {/* Split divider */}
+          {isEditorVisible && (
+            <div
+              onMouseDown={handleSplitMouseDown}
+              className={`w-1.5 flex-shrink-0 cursor-col-resize transition-colors ${isDragging ? 'bg-[#10B981]' : 'bg-[#E2E8F0] hover:bg-[#10B981]/50'}`}
+            />
+          )}
+
           {/* 미리보기 (iframe) */}
-          <div className={`${isEditorVisible ? 'w-1/2' : 'w-full'} h-full overflow-y-auto custom-scrollbar bg-[#F7FAFC] p-10 transition-all duration-500 relative`}>
-            <div className={`mx-auto bg-white shadow-2xl transition-all duration-500 relative min-h-full rounded-sm ${showPageGuides ? 'ring-1 ring-red-200' : ''}`} style={{ width: docWidth, minWidth: '380px' }}>
+          <div className={`${isEditorVisible ? 'flex-1 min-w-0' : 'w-full'} h-full overflow-y-auto custom-scrollbar bg-[#F7FAFC] p-10 transition-all duration-500 relative`}>
+            <div className={`mx-auto bg-white shadow-2xl transition-all duration-500 relative rounded-sm ${showPageGuides ? 'ring-1 ring-red-200' : ''}`} style={{ width: docWidth, minWidth: '380px' }}>
               <iframe
                 id="docwise-render"
                 title="docwise-render"
                 className="w-full border-none"
-                style={{ minHeight: '1200px', height: '100%' }}
+                style={{ minHeight: 'calc(100vh - 160px)', height: '100%' }}
                 srcDoc={renderMode === 'md' ? mdSrcDoc : htmlSrcDoc}
                 sandbox="allow-scripts allow-same-origin allow-popups"
               />
@@ -1235,6 +1530,10 @@ const EditorPage: React.FC = () => {
               : [
                   { label: '이름 변경', icon: <Pencil size={13} />, onClick: () => setEditingId(contextMenu.targetId) },
                   { label: '다운로드', icon: <Download size={13} />, onClick: () => handleDownloadFile(contextMenu.targetId) },
+                  { label: '폴더로 이동', icon: <Move size={13} />, onClick: () => {
+                    const file = currentFolder?.files.find(f => f.id === contextMenu!.targetId);
+                    setMoveTargetModal({ fileId: contextMenu!.targetId, fileName: file?.name || '' });
+                  }},
                   { label: '', onClick: () => {}, divider: true },
                   { label: '파일 삭제', icon: <Trash2 size={13} />, onClick: () => handleDeleteFile(contextMenu.targetId), danger: true },
                 ]
@@ -1255,6 +1554,34 @@ const EditorPage: React.FC = () => {
         onSignIn={signIn}
         onSignOut={signOut}
       />
+
+      {/* ═══ 폴더 이동 모달 ═══ */}
+      {moveTargetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setMoveTargetModal(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-xs w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-black text-[#1A202C] mb-1">폴더로 이동</h3>
+            <p className="text-[10px] text-[#1A202C]/40 mb-4">"{moveTargetModal.fileName}" 파일을 이동할 폴더를 선택하세요.</p>
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {folders.filter(f => f.id !== selectedFolderId).map(folder => (
+                <button
+                  key={folder.id}
+                  onClick={() => handleMoveFile(moveTargetModal.fileId, folder.id)}
+                  className="w-full px-3 py-2.5 text-left rounded-xl text-[12px] font-semibold text-[#1A202C]/70 hover:bg-[#10B981]/10 hover:text-[#10B981] transition-all flex items-center space-x-2"
+                >
+                  <Folder size={14} className="text-[#1A202C]/30" />
+                  <span>{folder.name}</span>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setMoveTargetModal(null)}
+              className="w-full mt-3 py-2 rounded-xl bg-[#F7FAFC] text-[#1A202C]/50 text-[11px] font-bold border border-[#E2E8F0] hover:bg-[#E2E8F0] transition-colors"
+            >
+              취소
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}

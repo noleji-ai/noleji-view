@@ -3,6 +3,7 @@ import LandingPage from './pages/LandingPage';
 import EditorPage from './pages/EditorPage';
 import SharedPage from './pages/SharedPage';
 import PricingPage from './pages/PricingPage';
+import ViewerPage from './pages/ViewerPage';
 
 /**
  * docwise v4.0 — Router
@@ -12,6 +13,7 @@ import PricingPage from './pages/PricingPage';
  *   /app        → Editor (main app)
  *   /pricing    → Pricing page
  *   /shared/:id → Shared document viewer
+ *   /viewer     → Read-only document viewer (Electron)
  */
 export default function App() {
   return (
@@ -20,6 +22,7 @@ export default function App() {
       <Route path="/app" element={<EditorPage />} />
       <Route path="/pricing" element={<PricingPage />} />
       <Route path="/shared/:id" element={<SharedPage />} />
+      <Route path="/viewer" element={<ViewerPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

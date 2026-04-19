@@ -1,13 +1,13 @@
 {
   "name": "docwise",
   "private": false,
-  "version": "4.0.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "AI-powered markdown knowledge management tool",
-  "homepage": "https://asderio-coway.github.io/docwise",
+  "homepage": "https://noleji-ai.github.io/docwise",
   "repository": {
     "type": "git",
-    "url": "https://github.com/asderio-coway/docwise.git"
+    "url": "https://github.com/noleji-ai/docwise.git"
   },
   "keywords": [
     "markdown",
@@ -18,11 +18,12 @@
     "typescript",
     "codemirror"
   ],
-  "author": "asderio-coway",
+  "author": "noleji-ai",
   "license": "MIT",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:electron": "ELECTRON=true tsc -b && ELECTRON=true vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },

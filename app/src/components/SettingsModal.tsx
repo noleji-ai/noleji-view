@@ -1,18 +1,25 @@
-import React, { useState, useCallback } from 'react';
-import { X, Check, AlertCircle, Wifi, WifiOff, ChevronDown, UserCircle, LogOut, Crown } from 'lucide-react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { X, Check, AlertCircle, Wifi, WifiOff, ChevronDown, UserCircle, LogOut, Crown, Sun, Moon } from 'lucide-react';
 import type { LLMConfig, LLMProvider } from '../types/llm';
 import { DEFAULT_LLM_CONFIGS } from '../types/llm';
 import type { AuthState } from '../types/auth';
 import { PRICING_PLANS } from '../data/pricingPlans';
+import type { ViewerSettings } from '../shared/viewerSettings';
+import { DEFAULT_VIEWER_SETTINGS } from '../shared/viewerSettings';
+import { loadViewerSettings, saveViewerSettings } from '../shared/settingsStore';
+import { DESIGN_TEMPLATES } from '../data/designTemplates';
+import { getGithubToken, setGithubToken, removeGithubToken } from '../services/gistStorage';
 
 /* ── Tab 정의 ── */
-type SettingsTab = 'general' | 'share' | 'llm' | 'auth';
+type SettingsTab = 'general' | 'share' | 'llm' | 'auth' | 'viewer';
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'general', label: '일반' },
   { id: 'share', label: '공유' },
   { id: 'llm', label: 'LLM' },
   { id: 'auth', label: '계정' },
+  { id: 'viewer', label: '뷰어' },
 ];
 
 /* ── Provider 옵션 ── */
@@ -49,6 +56,7 @@ export default function SettingsModal({
   onSignIn,
   onSignOut,
 }: SettingsModalProps) {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'failure' | null>(null);
@@ -167,8 +175,9 @@ export default function SettingsModal({
             />
           )}
           {activeTab === 'auth' && (
-            <AuthTab authState={authState} onSignIn={onSignIn} onSignOut={onSignOut} />
+            <AuthTab authState={authState} onSignIn={onSignIn} onSignOut={onSignOut} onClose={onClose} onNavigate={(path) => { onClose(); navigate(path); }} />
           )}
+          {activeTab === 'viewer' && <ViewerTab />}
         </div>
       </div>
     </div>
@@ -503,10 +512,13 @@ function AuthTab({
   authState,
   onSignIn,
   onSignOut,
+  onNavigate,
 }: {
   authState: AuthState;
   onSignIn: (provider: 'google' | 'github') => void;
   onSignOut: () => void;
+  onClose?: () => void;
+  onNavigate?: (path: string) => void;
 }) {
   if (authState.status === 'loading') {
     return (
@@ -584,11 +596,22 @@ function AuthTab({
             </div>
           </div>
           {user.plan === 'free' && (
-            <span className="text-[9px] font-black text-[#10B981] bg-[#10B981]/10 px-3 py-1.5 rounded-full uppercase tracking-wider">
+            <button
+              onClick={() => onNavigate?.('/pricing')}
+              className="text-[9px] font-black text-[#10B981] bg-[#10B981]/10 px-3 py-1.5 rounded-full uppercase tracking-wider cursor-pointer hover:bg-[#10B981]/20 transition-all"
+            >
               업그레이드
-            </span>
+            </button>
           )}
         </div>
+      </Section>
+
+      {/* GitHub Token for Permanent Links */}
+      <Section label="영구 링크 설정">
+        <p className="text-[10px] font-medium text-[#1A202C]/40 mb-3">
+          유료 사용자는 GitHub Gist를 통해 만료되지 않는 영구 링크를 생성할 수 있습니다.
+        </p>
+        <GitHubTokenInput />
       </Section>
 
       {/* Sign Out */}
@@ -599,6 +622,210 @@ function AuthTab({
         <LogOut size={14} />
         <span>로그아웃</span>
       </button>
+    </div>
+  );
+}
+
+function GitHubTokenInput() {
+  const [token, setToken] = useState(getGithubToken() ?? '');
+  const [saved, setSaved] = useState(!!getGithubToken());
+  const [showToken, setShowToken] = useState(false);
+
+  const handleSave = () => {
+    if (token.trim()) {
+      setGithubToken(token.trim());
+      setSaved(true);
+    }
+  };
+
+  const handleRemove = () => {
+    removeGithubToken();
+    setToken('');
+    setSaved(false);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center space-x-2">
+        <input
+          type={showToken ? 'text' : 'password'}
+          value={token}
+          onChange={(e) => { setToken(e.target.value); setSaved(false); }}
+          placeholder="ghp_xxxxxxxxxxxx"
+          className="flex-1 px-3 py-2 rounded-lg border border-[#E2E8F0] bg-white text-[11px] font-mono text-[#1A202C] placeholder-[#1A202C]/20 focus:outline-none focus:border-[#10B981]"
+        />
+        <button
+          onClick={() => setShowToken(!showToken)}
+          className="px-2 py-2 rounded-lg border border-[#E2E8F0] text-[9px] font-bold text-[#1A202C]/40 hover:text-[#1A202C] transition-all"
+        >
+          {showToken ? '숨기기' : '보기'}
+        </button>
+      </div>
+      <div className="flex items-center space-x-2">
+        <button
+          onClick={handleSave}
+          disabled={!token.trim() || saved}
+          className="px-3 py-1.5 rounded-lg bg-[#10B981] text-white text-[10px] font-bold disabled:opacity-30 disabled:cursor-default hover:bg-[#059669] transition-all"
+        >
+          {saved ? '저장됨' : '저장'}
+        </button>
+        {saved && (
+          <button
+            onClick={handleRemove}
+            className="px-3 py-1.5 rounded-lg border border-red-200 text-red-500 text-[10px] font-bold hover:bg-red-50 transition-all"
+          >
+            삭제
+          </button>
+        )}
+      </div>
+      <p className="text-[9px] text-[#1A202C]/25">
+        GitHub Personal Access Token (gist 권한 필요) · <a href="https://github.com/settings/tokens/new?scopes=gist&description=docwise" target="_blank" rel="noopener noreferrer" className="text-[#10B981] hover:underline">토큰 생성하기</a>
+      </p>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════ */
+/*                Viewer Tab                       */
+/* ══════════════════════════════════════════════ */
+function ViewerTab() {
+  const [settings, setSettings] = useState<ViewerSettings>(DEFAULT_VIEWER_SETTINGS);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    loadViewerSettings().then((s) => {
+      setSettings(s);
+      setLoaded(true);
+    });
+  }, []);
+
+  const update = useCallback((patch: Partial<ViewerSettings>) => {
+    setSettings(prev => {
+      const next = { ...prev, ...patch };
+      saveViewerSettings(next);
+      return next;
+    });
+  }, []);
+
+  if (!loaded) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-5 h-5 border-2 border-[#E2E8F0] border-t-[#10B981] rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Template selector */}
+      <Section label="디자인 템플릿">
+        <div className="grid grid-cols-3 gap-2">
+          {DESIGN_TEMPLATES.map((tmpl) => (
+            <button
+              key={tmpl.id}
+              onClick={() => update({ templateId: tmpl.id })}
+              className={`p-3 rounded-xl border-2 transition-all text-left hover:shadow-md ${
+                settings.templateId === tmpl.id
+                  ? 'border-[#10B981] bg-[#10B981]/5'
+                  : 'border-[#E2E8F0] bg-white hover:border-[#10B981]/40'
+              }`}
+            >
+              <div className="flex items-center space-x-1 mb-1.5">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: tmpl.color }} />
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: tmpl.accent }} />
+              </div>
+              <p className="text-[10px] font-black text-[#1A202C] leading-tight truncate">{tmpl.name}</p>
+            </button>
+          ))}
+        </div>
+      </Section>
+
+      {/* Font size */}
+      <Section label={`글자 크기: ${settings.fontSize}px`}>
+        <input
+          type="range"
+          min="12"
+          max="28"
+          value={settings.fontSize}
+          onChange={(e) => update({ fontSize: parseInt(e.target.value) })}
+          className="w-full h-1.5 bg-[#E2E8F0] rounded-lg appearance-none cursor-pointer"
+          style={{ accentColor: '#10B981' }}
+        />
+        <div className="flex justify-between text-[9px] font-bold text-[#1A202C]/20 mt-1">
+          <span>12px</span>
+          <span>28px</span>
+        </div>
+      </Section>
+
+      {/* Line height */}
+      <Section label={`줄 간격: ${settings.lineHeight.toFixed(1)}`}>
+        <input
+          type="range"
+          min="14"
+          max="26"
+          step="1"
+          value={settings.lineHeight * 10}
+          onChange={(e) => update({ lineHeight: parseInt(e.target.value) / 10 })}
+          className="w-full h-1.5 bg-[#E2E8F0] rounded-lg appearance-none cursor-pointer"
+          style={{ accentColor: '#10B981' }}
+        />
+        <div className="flex justify-between text-[9px] font-bold text-[#1A202C]/20 mt-1">
+          <span>1.4</span>
+          <span>2.6</span>
+        </div>
+      </Section>
+
+      {/* Padding */}
+      <Section label={`여백: ${settings.padding}px`}>
+        <input
+          type="range"
+          min="20"
+          max="100"
+          step="10"
+          value={settings.padding}
+          onChange={(e) => update({ padding: parseInt(e.target.value) })}
+          className="w-full h-1.5 bg-[#E2E8F0] rounded-lg appearance-none cursor-pointer"
+          style={{ accentColor: '#10B981' }}
+        />
+        <div className="flex justify-between text-[9px] font-bold text-[#1A202C]/20 mt-1">
+          <span>20px</span>
+          <span>100px</span>
+        </div>
+      </Section>
+
+      {/* Document width */}
+      <Section label="문서 너비">
+        <div className="grid grid-cols-4 gap-1.5">
+          {['640px', '800px', '1200px', '100%'].map((w) => (
+            <button
+              key={w}
+              onClick={() => update({ docWidth: w })}
+              className={`py-2 text-[10px] font-black border rounded-lg transition-all ${
+                settings.docWidth === w
+                  ? 'bg-[#1A202C] text-white border-[#1A202C]'
+                  : 'bg-white text-[#1A202C]/30 border-[#E2E8F0] hover:border-[#10B981]'
+              }`}
+            >
+              {w === '100%' ? 'FULL' : w}
+            </button>
+          ))}
+        </div>
+      </Section>
+
+      {/* Dark mode toggle */}
+      <Section label="다크 모드">
+        <button
+          onClick={() => update({ isDark: !settings.isDark })}
+          className={`w-full py-3 rounded-xl border-2 font-black text-[11px] transition-all flex items-center justify-center space-x-2 ${
+            settings.isDark
+              ? 'bg-[#1A202C] border-[#1A202C] text-white'
+              : 'bg-white border-[#E2E8F0] text-[#1A202C]/50 hover:border-[#10B981]'
+          }`}
+        >
+          {settings.isDark ? <Moon size={14} /> : <Sun size={14} />}
+          <span>{settings.isDark ? 'DARK MODE' : 'LIGHT MODE'}</span>
+        </button>
+      </Section>
     </div>
   );
 }

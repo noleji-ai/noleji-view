@@ -1,0 +1,44 @@
+{
+  "name": "docwise-desktop",
+  "version": "1.0.0",
+  "description": "docwise Desktop — AI 기반 마크다운 지식 관리 도구",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "tsc && electron .",
+    "build": "cd ../app && npm run build:electron && cd ../desktop && tsc && electron-builder",
+    "build:quick": "tsc && electron-builder",
+    "start": "electron ."
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "typescript": "~6.0.2"
+  },
+  "build": {
+    "appId": "com.coway.docwise",
+    "productName": "docwise",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "target": ["dmg", "zip"]
+    },
+    "fileAssociations": [
+      { "ext": "md", "name": "Markdown Document", "role": "Viewer" },
+      { "ext": "html", "name": "HTML Document", "role": "Viewer" },
+      { "ext": "htm", "name": "HTML Document", "role": "Viewer" }
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../app/dist",
+        "to": "app-dist"
+      }
+    ]
+  }
+}

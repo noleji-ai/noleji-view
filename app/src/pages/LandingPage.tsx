@@ -5,16 +5,7 @@ import {
   ExternalLink, ChevronRight,
 } from 'lucide-react';
 import PricingSection from '../components/PricingSection';
-
-/* ── Design Templates data (mirror of EditorPage) ── */
-const DESIGN_TEMPLATES = [
-  { id: 'apple', name: 'Apple Premium', color: '#000000', accent: '#0071E3', font: 'SF Pro, Inter' },
-  { id: 'stripe', name: 'Stripe Elegant', color: '#635BFF', accent: '#00D7FF', font: 'Inter' },
-  { id: 'linear', name: 'Linear Minimal', color: '#5E6AD2', accent: '#8A94E9', font: 'Inter' },
-  { id: 'vercel', name: 'Vercel Precise', color: '#000000', accent: '#000000', font: 'Geist, sans-serif' },
-  { id: 'mistral', name: 'Mistral French', color: '#FF5917', accent: '#7C3AED', font: 'Inter' },
-  { id: 'asome', name: 'Asome Emerald', color: '#1A202C', accent: '#10B981', font: 'Source Serif 4' },
-];
+import { DESIGN_TEMPLATES } from '../data/designTemplates';
 
 /* ── Feature items ── */
 const FEATURES = [
@@ -123,41 +114,101 @@ export default function LandingPage() {
               <div className="relative">
                 {/* Glow behind */}
                 <div className="absolute inset-0 bg-gradient-to-br from-[#10B981]/20 to-[#1A202C]/10 rounded-3xl blur-2xl scale-105" />
-                {/* Card */}
+
+                {/* Main Editor Card */}
                 <div className="relative bg-white rounded-2xl sm:rounded-3xl border-2 border-[#E2E8F0] shadow-2xl overflow-hidden">
                   {/* Window chrome */}
                   <div className="h-10 bg-[#F7FAFC] border-b border-[#E2E8F0] flex items-center px-4 space-x-2">
                     <div className="w-3 h-3 rounded-full bg-[#FC8181]" />
                     <div className="w-3 h-3 rounded-full bg-[#F6AD55]" />
                     <div className="w-3 h-3 rounded-full bg-[#68D391]" />
-                    <span className="ml-3 text-[9px] font-black text-[#1A202C]/20 uppercase tracking-widest">docwise v4.0</span>
+                    <span className="ml-3 text-[9px] font-black text-[#1A202C]/20 uppercase tracking-widest">docwise v1.0</span>
                   </div>
                   {/* Editor simulation */}
                   <div className="flex min-h-[240px] sm:min-h-[300px]">
                     {/* Sidebar mock */}
                     <div className="w-1/4 bg-[#F7FAFC] border-r border-[#E2E8F0] p-3 space-y-2 hidden sm:block">
+                      <div className="flex items-center space-x-2 mb-3">
+                        <div className="w-5 h-5 rounded-md bg-[#1A202C] flex items-center justify-center text-white text-[7px] font-bold">d</div>
+                        <span className="text-[8px] font-black uppercase italic text-[#1A202C]">docwise</span>
+                      </div>
                       {['Personal', 'Projects', 'Design'].map((f, i) => (
                         <div key={f} className={`px-2.5 py-2 rounded-lg text-[9px] font-bold ${i === 0 ? 'bg-white shadow-sm border border-[#E2E8F0] text-[#1A202C]' : 'text-[#1A202C]/30'}`}>
                           {f}
                         </div>
                       ))}
+                      <div className="mt-2 pt-2 border-t border-[#E2E8F0] space-y-1">
+                        {['README.md', 'guide.md', 'notes.md'].map((f, i) => (
+                          <div key={f} className={`px-2 py-1.5 rounded-md text-[8px] font-semibold ${i === 0 ? 'bg-[#1A202C] text-white' : 'text-[#1A202C]/40'}`}>
+                            {f}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    {/* Content mock */}
-                    <div className="flex-1 p-5 sm:p-6 space-y-3">
-                      <div className="h-5 w-3/4 bg-[#1A202C] rounded-md" />
-                      <div className="h-3 w-full bg-[#E2E8F0] rounded" />
-                      <div className="h-3 w-5/6 bg-[#E2E8F0] rounded" />
-                      <div className="h-3 w-2/3 bg-[#E2E8F0] rounded" />
-                      <div className="mt-4 h-16 w-full bg-gradient-to-r from-[#10B981]/10 to-[#10B981]/5 rounded-xl border border-[#10B981]/20 flex items-center px-4">
-                        <div className="w-1 h-8 bg-[#10B981] rounded mr-3" />
-                        <div className="space-y-1.5 flex-1">
-                          <div className="h-2 w-full bg-[#10B981]/20 rounded" />
-                          <div className="h-2 w-4/5 bg-[#10B981]/15 rounded" />
+                    {/* Split: Editor + Preview */}
+                    <div className="flex-1 flex">
+                      {/* Editor side */}
+                      <div className="w-1/2 border-r border-[#E2E8F0] p-4 hidden sm:block">
+                        <div className="text-[8px] font-black text-[#1A202C]/20 uppercase tracking-widest mb-3">Editor</div>
+                        <div className="space-y-1.5 font-mono text-[8px] text-[#1A202C]/50">
+                          <div><span className="text-[#10B981] font-bold"># </span><span className="text-[#1A202C] font-bold text-[10px]">Getting Started</span></div>
+                          <div className="h-1.5" />
+                          <div>Welcome to **docwise**, your</div>
+                          <div>markdown knowledge tool.</div>
+                          <div className="h-1.5" />
+                          <div><span className="text-[#10B981] font-bold">## </span><span className="text-[#1A202C] font-semibold">Features</span></div>
+                          <div className="h-1.5" />
+                          <div><span className="text-[#10B981]">&gt; </span>AI-powered knowledge</div>
+                          <div><span className="text-[#10B981]">&gt; </span>generation system</div>
+                          <div className="h-1.5" />
+                          <div><span className="text-[#7C3AED]">```python</span></div>
+                          <div><span className="text-[#E53E3E]">def</span> generate():</div>
+                          <div>&nbsp;&nbsp;<span className="text-[#E53E3E]">return</span> wiki</div>
+                          <div><span className="text-[#7C3AED]">```</span></div>
                         </div>
                       </div>
-                      <div className="h-3 w-full bg-[#E2E8F0] rounded" />
-                      <div className="h-3 w-3/4 bg-[#E2E8F0] rounded" />
+                      {/* Preview side */}
+                      <div className="flex-1 p-4 sm:p-5">
+                        <div className="text-[8px] font-black text-[#1A202C]/20 uppercase tracking-widest mb-3 hidden sm:block">Preview</div>
+                        <div className="space-y-2.5">
+                          <div className="h-5 w-3/4 bg-[#1A202C] rounded-md" />
+                          <div className="h-2.5 w-full bg-[#E2E8F0] rounded" />
+                          <div className="h-2.5 w-5/6 bg-[#E2E8F0] rounded" />
+                          <div className="mt-3 p-3 bg-gradient-to-r from-[#10B981]/10 to-[#10B981]/5 rounded-xl border border-[#10B981]/20">
+                            <div className="flex items-start space-x-2">
+                              <div className="w-0.5 h-8 bg-[#10B981] rounded flex-shrink-0 mt-0.5" />
+                              <div className="space-y-1.5 flex-1">
+                                <div className="h-2 w-full bg-[#10B981]/20 rounded" />
+                                <div className="h-2 w-4/5 bg-[#10B981]/15 rounded" />
+                              </div>
+                            </div>
+                          </div>
+                          <div className="p-2.5 bg-[#1A202C] rounded-lg">
+                            <div className="space-y-1">
+                              <div className="h-2 w-2/3 bg-[#10B981]/40 rounded" />
+                              <div className="h-2 w-1/2 bg-[#E2E8F0]/20 rounded" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
+                  </div>
+                </div>
+
+                {/* Floating Viewer Card (overlapping bottom-right) */}
+                <div className="absolute -bottom-6 -right-4 sm:-bottom-8 sm:-right-6 w-48 sm:w-56 bg-white rounded-xl border-2 border-[#E2E8F0] shadow-2xl overflow-hidden">
+                  <div className="h-7 bg-[#F7FAFC] border-b border-[#E2E8F0] flex items-center px-3 space-x-1.5">
+                    <div className="w-2 h-2 rounded-full bg-[#FC8181]" />
+                    <div className="w-2 h-2 rounded-full bg-[#F6AD55]" />
+                    <div className="w-2 h-2 rounded-full bg-[#68D391]" />
+                    <span className="ml-2 text-[7px] font-black text-[#1A202C]/20 uppercase">Viewer</span>
+                  </div>
+                  <div className="p-3 space-y-2">
+                    <div className="h-3 w-2/3 bg-[#10B981] rounded" />
+                    <div className="h-1.5 w-full bg-[#E2E8F0] rounded" />
+                    <div className="h-1.5 w-4/5 bg-[#E2E8F0] rounded" />
+                    <div className="h-1.5 w-3/5 bg-[#E2E8F0] rounded" />
+                    <div className="h-6 w-full bg-[#F7FAFC] rounded-md border border-[#E2E8F0] mt-1" />
                   </div>
                 </div>
               </div>
@@ -324,7 +375,7 @@ export default function LandingPage() {
               <ArrowRight size={16} />
             </button>
             <a
-              href="https://github.com"
+              href="https://github.com/noleji-ai/docwise"
               target="_blank"
               rel="noopener noreferrer"
               className="w-full sm:w-auto px-10 py-4 bg-[#F7FAFC] text-[#1A202C]/60 rounded-2xl font-black text-sm tracking-wide hover:bg-[#E2E8F0] transition-all active:scale-[0.98] flex items-center justify-center space-x-2.5 border border-[#E2E8F0]"

@@ -8,7 +8,7 @@
 [![Vite](https://img.shields.io/badge/Vite-8-purple.svg)](https://vite.dev)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-blue.svg)](https://tailwindcss.com)
 
-> **Demo**: [https://asderio-coway.github.io/docwise](https://asderio-coway.github.io/docwise)
+> **Demo**: [https://noleji-ai.github.io/docwise](https://noleji-ai.github.io/docwise)
 
 ---
 

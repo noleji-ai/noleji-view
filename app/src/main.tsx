@@ -1,13 +1,19 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter, HashRouter } from 'react-router-dom'
 import App from './App.tsx'
 import './index.css'
 
+const isElectron = !!window.electronAPI;
+const Router = isElectron ? HashRouter : BrowserRouter;
+const routerProps = isElectron ? {} : { basename: '/docwise' };
+
+if (isElectron) document.documentElement.dataset.electron = 'true';
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter basename="/docwise">
+    <Router {...routerProps}>
       <App />
-    </BrowserRouter>
+    </Router>
   </React.StrictMode>,
 )
