@@ -127,19 +127,19 @@ const markdownHighlight = HighlightStyle.define([
 
 /* ── 샘플 콘텐츠 ── */
 const DEFAULT_CONTENT = `---
-title: docwise 시작하기
-author: Coway OpenWork
+title: Noleji View 시작하기
+author: Noleji AI
 date: 2026-04-14
 tags: [가이드, 문서관리, 위키]
 ---
 
-# docwise 시작하기
+# Noleji View 시작하기
 
 > 원본을 훼손하지 않는 **로컬 우선** 마크다운 관리 도구입니다.
 
 ## 핵심 기능
 
-**docwise**는 다음과 같은 기능을 제공합니다:
+**Noleji View**는 다음과 같은 기능을 제공합니다:
 
 1. **비파괴 워크스페이스** — 원본 파일을 읽기만 하며, 앱 내부 폴더에 복사본을 생성
 2. **실시간 품질 검수** — 링크, 이미지, 헤더 구조 오류를 실시간 탐지
@@ -150,7 +150,7 @@ tags: [가이드, 문서관리, 위키]
 
 \`\`\`typescript
 // 문서를 프로젝트에 할당하기
-const result = await docwise.importFile(
+const result = await nolejiView.importFile(
   '/path/to/document.md',
   '코웨이 루틴 업무'
 );
@@ -178,7 +178,7 @@ console.log(result.workingCopy);
 ### 인용문
 
 > *"좋은 문서는 좋은 제품만큼 가치가 있다."*
-> — docwise 설계 원칙
+> — Noleji View 설계 원칙
 
 ---
 

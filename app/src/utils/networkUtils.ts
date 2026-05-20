@@ -4,7 +4,7 @@
  */
 export async function getLocalIP(): Promise<string> {
   // Check for manual override in localStorage
-  const override = localStorage.getItem('docwise-ip-override');
+  const override = localStorage.getItem('noleji-view-ip-override') ?? localStorage.getItem('docwise-ip-override');
   if (override) return override;
 
   try {
@@ -36,12 +36,12 @@ export async function getLocalIP(): Promise<string> {
 
 export function setIPOverride(ip: string): void {
   if (ip.trim()) {
-    localStorage.setItem('docwise-ip-override', ip.trim());
+    localStorage.setItem('noleji-view-ip-override', ip.trim());
   } else {
-    localStorage.removeItem('docwise-ip-override');
+    localStorage.removeItem('noleji-view-ip-override');
   }
 }
 
 export function getIPOverride(): string {
-  return localStorage.getItem('docwise-ip-override') || '';
+  return localStorage.getItem('noleji-view-ip-override') ?? localStorage.getItem('docwise-ip-override') ?? '';
 }

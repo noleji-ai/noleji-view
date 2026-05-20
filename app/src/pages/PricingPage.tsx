@@ -4,8 +4,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import PricingSection from '../components/PricingSection';
 import { useAuth } from '../hooks/useAuth';
 import { getUserPlan } from '../utils/featureGate';
-import { redirectToCheckout } from '../services/stripeCheckout';
+import { getBillingProviderLabel, startCheckout } from '../services/billing';
 import type { PricingTier } from '../types/pricing';
+import PublicFooter from '../components/PublicFooter';
 
 export default function PricingPage() {
   const navigate = useNavigate();
@@ -20,24 +21,18 @@ export default function PricingPage() {
   // Handle payment success/cancel redirect
   useEffect(() => {
     if (searchParams.get('success') === 'true') {
-      // Update user plan (in a real app, this would verify with the server)
-      const newPlan = searchParams.get('plan') as PricingTier || 'monthly';
-      if (authState.status === 'authenticated') {
-        const stored = localStorage.getItem('docwise-user');
-        if (stored) {
-          const user = JSON.parse(stored);
-          user.plan = newPlan;
-          localStorage.setItem('docwise-user', JSON.stringify(user));
-          localStorage.setItem('docwise-user-plan', newPlan);
-        }
-      }
-      setToast({ message: '결제가 완료되었습니다! 프리미엄 기능을 즐기세요.', type: 'success' });
+      const returnedPlan = searchParams.get('plan') as PricingTier || 'monthly';
+      const provider = searchParams.get('provider') === 'toss' ? 'toss' : 'manual';
+      setToast({
+        message: `결제 페이지를 정상적으로 마쳤습니다. ${returnedPlan === 'lifetime' ? '평생' : '월간'} 플랜 상태는 ${getBillingProviderLabel(provider)} → Supabase 동기화 후 반영됩니다.`,
+        type: 'success',
+      });
       setSearchParams({}, { replace: true });
     } else if (searchParams.get('canceled') === 'true') {
       setToast({ message: '결제가 취소되었습니다.', type: 'error' });
       setSearchParams({}, { replace: true });
     }
-  }, [searchParams, authState, setSearchParams]);
+  }, [searchParams, setSearchParams]);
 
   // Auto-dismiss toast after 5 seconds
   useEffect(() => {
@@ -58,7 +53,16 @@ export default function PricingPage() {
 
     if (authState.user.plan === tier) return;
 
-    redirectToCheckout(tier, authState.user.uid);
+    try {
+      startCheckout(tier, authState.user.uid);
+    } catch (error) {
+      setToast({
+        message: error instanceof Error
+          ? error.message
+          : 'Toss Payments 결제 설정이 아직 완료되지 않았습니다. 클라이언트 키, 결제 플로우 URL, webhook 연동 후 활성화됩니다.',
+        type: 'error',
+      });
+    }
   }, [authState, navigate]);
 
   return (
@@ -87,9 +91,9 @@ export default function PricingPage() {
           </button>
           <div className="flex items-center space-x-2">
             <div className="w-7 h-7 rounded-lg bg-[#1A202C] flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-black/10">
-              d
+              v
             </div>
-            <span className="text-sm font-black tracking-tighter uppercase italic text-[#1A202C]">docwise</span>
+            <span className="text-sm font-black tracking-tighter uppercase italic text-[#1A202C]">Noleji View</span>
           </div>
         </div>
       </header>
@@ -101,7 +105,7 @@ export default function PricingPage() {
             당신의 지식에 날개를 달아주세요
           </h1>
           <p className="text-[14px] font-medium text-[#1A202C]/40 max-w-lg mx-auto">
-            무료로 시작하고, 필요할 때 업그레이드하세요. 모든 플랜에 마크다운 편집과 실시간 미리보기가 포함됩니다.
+            무료로 시작하고, 월 4,900원부터 업그레이드하세요. 모든 플랜에 마크다운 편집과 실시간 미리보기가 포함됩니다.
           </p>
         </div>
 
@@ -111,16 +115,8 @@ export default function PricingPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-[#E2E8F0] bg-white">
-        <div className="max-w-5xl mx-auto px-6 py-6 flex items-center justify-between">
-          <span className="text-[10px] font-bold text-[#1A202C]/20">
-            docwise &copy; 2026. All rights reserved.
-          </span>
-          <span className="text-[9px] font-black text-[#1A202C]/15 uppercase tracking-widest">
-            Markdown Knowledge Engine
-          </span>
-        </div>
-      </footer>
+      <PublicFooter compact />
     </div>
   );
 }
+

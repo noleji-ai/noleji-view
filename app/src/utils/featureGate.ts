@@ -1,8 +1,11 @@
 import type { PricingTier, PremiumAction } from '../types/pricing';
 import { PRICING_PLANS } from '../data/pricingPlans';
+import { readStoredUser } from '../services/accountStore';
 
-const USAGE_KEY_PREFIX = 'docwise-usage-';
-const USER_PLAN_KEY = 'docwise-user-plan';
+const USAGE_KEY_PREFIX = 'noleji-view-usage-';
+const LEGACY_USAGE_KEY_PREFIX = 'docwise-usage-';
+const USER_PLAN_KEY = 'noleji-view-user-plan';
+const LEGACY_USER_PLAN_KEY = 'docwise-user-plan';
 
 /**
  * Get the current KST date string (YYYY-MM-DD).
@@ -19,8 +22,11 @@ function getKSTDateString(): string {
  * Defaults to 'free' if not set or invalid.
  */
 export function getUserPlan(): PricingTier {
+  const storedUser = readStoredUser();
+  if (storedUser) return storedUser.plan;
+
   try {
-    const stored = localStorage.getItem(USER_PLAN_KEY);
+    const stored = localStorage.getItem(USER_PLAN_KEY) ?? localStorage.getItem(LEGACY_USER_PLAN_KEY);
     if (stored === 'free' || stored === 'monthly' || stored === 'lifetime') {
       return stored;
     }
@@ -56,7 +62,7 @@ export function getDailyUsage(): { used: number; limit: number; date: string } {
 
   let used = 0;
   try {
-    const stored = localStorage.getItem(key);
+    const stored = localStorage.getItem(key) ?? localStorage.getItem(`${LEGACY_USAGE_KEY_PREFIX}${date}`);
     if (stored !== null) {
       used = parseInt(stored, 10);
       if (isNaN(used)) used = 0;
@@ -75,7 +81,7 @@ export function getDailyUsage(): { used: number; limit: number; date: string } {
 /**
  * Check whether a premium action is allowed.
  * Paid users always get { allowed: true, remaining: Infinity }.
- * Free users get a daily cap of 5.
+ * Free users get a daily cap of 10.
  */
 export function canUsePremiumAction(): { allowed: boolean; remaining: number; limit: number } {
   const { used, limit } = getDailyUsage();
@@ -97,9 +103,10 @@ export function trackPremiumAction(_action: PremiumAction): boolean {
   if (!allowed) return false;
 
   const key = getTodayUsageKey();
+  const legacyKey = `${LEGACY_USAGE_KEY_PREFIX}${getKSTDateString()}`;
   let current = 0;
   try {
-    const stored = localStorage.getItem(key);
+    const stored = localStorage.getItem(key) ?? localStorage.getItem(legacyKey);
     if (stored !== null) {
       current = parseInt(stored, 10);
       if (isNaN(current)) current = 0;
@@ -128,4 +135,16 @@ export function canCreateFile(currentFileCount: number): boolean {
   const limits = getPlanLimits();
   if (!isFinite(limits.maxFilesPerFolder)) return true;
   return currentFileCount < limits.maxFilesPerFolder;
+}
+
+export function canUseManagedAI(): boolean {
+  return getPlanLimits().managedAI;
+}
+
+export function canUseCloudSync(): boolean {
+  return getPlanLimits().cloudSync;
+}
+
+export function canUseLinkSharing(): boolean {
+  return getPlanLimits().linkSharing;
 }

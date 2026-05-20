@@ -4,109 +4,188 @@ import {
   Layout, BookOpen, X, FileCode, Code2, Download, FileDown,
   Sliders, Sun, Moon, Move, Check, AlertCircle, ExternalLink,
   PanelLeftClose, PanelLeftOpen, Trash2, Pencil, Import, Brain, Sparkles, Save,
-  FolderPlus, FilePlus, Palette, Eye
+  FolderPlus, FilePlus, Palette, Eye, Search, Info
 } from 'lucide-react';
 import { useMarkdownParser } from '../hooks/useMarkdownParser';
 import MarkdownToolbar from '../components/MarkdownToolbar';
 import { SAMPLE_CONTENTS } from '../data/sampleContents';
 import { DESIGN_TEMPLATES } from '../data/designTemplates';
+import { EXTERNAL_FILES_FOLDER_ID, INITIAL_FOLDERS } from '../data/initialWorkspace';
 import ContextMenu from '../components/ContextMenu';
 import InlineEdit from '../components/InlineEdit';
 import SettingsModal from '../components/SettingsModal';
 import { useAuth } from '../hooks/useAuth';
-import { type LLMConfig } from '../types/llm';
+import { getAppBasePath, getAppUrl } from '../config/env';
+import type { LLMConfig } from '../types/llm';
 import { loadLLMConfig, saveLLMConfig, testConnection } from '../services/llmClient';
 import { ingestFolder } from '../services/wiki';
 import type { WikiPage } from '../services/wiki';
-import { canUsePremiumAction, trackPremiumAction, getUserPlan } from '../utils/featureGate';
-import { publishToGist, getGithubToken } from '../services/gistStorage';
+import { buildFullPage } from '../services/wiki/utils/frontmatter';
+import { canUsePremiumAction, trackPremiumAction } from '../utils/featureGate';
 import UsageBadge from '../components/UsageBadge';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { getLocalIP } from '../utils/networkUtils';
+import { createSharedDocument } from '../services/shareStore';
+import { buildWorkspaceSnapshot, hydrateSampleContents, loadWorkspaceState, saveWorkspaceState, syncWorkspaceToCloud } from '../services/workspaceStore';
+import type { FileItem, FolderItem, WorkspaceSyncState } from '../types/workspace';
+import type { ViewerSettings } from '../shared/viewerSettings';
+import { DEFAULT_VIEWER_SETTINGS } from '../shared/viewerSettings';
+import { loadViewerSettings, saveViewerSettings } from '../shared/settingsStore';
 
 /**
- * docwise Desktop v1.0
+ * Noleji View Desktop v1.0
  * 1. Obsidian-style Markdown Editing Toolbar
  * 2. Rich h3-h6, hr, blockquote, code, list styling
  * 3. Folder Tree Sidebar + File List
  * 4. Enhanced PDF Print + Publish Shareable Link
  */
 
-/* ── 타입 정의 ── */
-interface FileItem {
-  id: string;
-  name: string;
-  type: 'md' | 'html';
-  date: string;
-  content?: string;
-  sourcePath?: string;
-}
-
-interface FolderItem {
-  id: string;
-  name: string;
-  files: FileItem[];
-  subfolders?: FolderItem[];
-  isKnowledgeFolder?: boolean;
-}
-
 interface ExternalFileState {
   savedContent: string;
   lastSavedAt: number | null;
 }
 
-/* ── 폴더/파일 Mock 데이터 ── */
-const INITIAL_FOLDERS: FolderItem[] = [
-  {
-    id: 'personal',
-    name: '개인 지식 보관소',
-    files: [
-      { id: 'f1', name: '시작하기.md', type: 'md', date: '2026-04-14' },
-      { id: 'f2', name: '마크다운_치트시트.md', type: 'md', date: '2026-04-13' },
-      { id: 'f3', name: '나의_독서노트.md', type: 'md', date: '2026-04-12' },
-    ],
-  },
-  {
-    id: 'project',
-    name: '프로젝트 기획',
-    files: [
-      { id: 'f4', name: '2026_신규서비스_기획.md', type: 'md', date: '2026-04-14' },
-      { id: 'f5', name: 'API_설계_명세.md', type: 'md', date: '2026-04-13' },
-      { id: 'f6', name: '회의록_0414.md', type: 'md', date: '2026-04-14' },
-    ],
-  },
-  {
-    id: 'design-system',
-    name: '디자인 시스템',
-    files: [
-      { id: 'f7', name: 'Apple_스타일_가이드.html', type: 'html', date: '2026-04-11' },
-      { id: 'f8', name: 'Stripe_컴포넌트.html', type: 'html', date: '2026-04-10' },
-      { id: 'f9', name: '브랜드_컬러_팔레트.md', type: 'md', date: '2026-04-09' },
-    ],
-  },
-  {
-    id: 'marketing',
-    name: '마케팅 & 콘텐츠',
-    files: [
-      { id: 'f10', name: '랜딩페이지_시안.html', type: 'html', date: '2026-04-12' },
-      { id: 'f11', name: '뉴스레터_초안.md', type: 'md', date: '2026-04-11' },
-      { id: 'f12', name: 'SNS_캠페인_보고서.md', type: 'md', date: '2026-04-10' },
-    ],
-  },
-  {
-    id: 'learning',
-    name: '학습 & 참고자료',
-    files: [
-      { id: 'f13', name: 'TypeScript_핵심정리.md', type: 'md', date: '2026-04-13' },
-      { id: 'f14', name: 'CSS_Grid_레이아웃.html', type: 'html', date: '2026-04-12' },
-      { id: 'f15', name: 'React_19_변경사항.md', type: 'md', date: '2026-04-11' },
-    ],
-  },
-];
+interface WorkspaceFileSearchResult {
+  folderId: string;
+  folderName: string;
+  file: FileItem;
+  snippet: string;
+}
+
+interface KnowledgeOutputItem {
+  key: 'index' | 'overview' | 'entities' | 'concepts' | 'log';
+  label: string;
+  fileName: string;
+  fileId: string | null;
+  description: string;
+  countLabel: string;
+}
+
+interface KnowledgeFolderSummary {
+  folderId: string;
+  parentFolderId: string;
+  parentFolderName: string;
+  totalFiles: number;
+  generatedAt: string | null;
+  sourceCount: number;
+  outputs: KnowledgeOutputItem[];
+}
 
 const A4_HEIGHT_PX = 1122;
-const EXTERNAL_FILES_FOLDER_ID = 'desktop-external-files';
+const BRAND_NAME = 'Noleji View';
+const DOC_WIDTH_OPTIONS = ['640px', '800px', '1000px', '1200px', '100%'];
+
+function collectWorkspaceSearchResults(
+  folders: FolderItem[],
+  query: string,
+): WorkspaceFileSearchResult[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return [];
+
+  const results: WorkspaceFileSearchResult[] = [];
+  const visitFolder = (folder: FolderItem) => {
+    for (const file of folder.files) {
+      const documentText = SAMPLE_CONTENTS[file.id] ?? '';
+      const searchable = `${folder.name}\n${file.name}\n${documentText}`.toLowerCase();
+      if (!searchable.includes(normalizedQuery)) continue;
+
+      const contentIndex = documentText.toLowerCase().indexOf(normalizedQuery);
+      const snippetStart = contentIndex >= 0 ? Math.max(0, contentIndex - 32) : 0;
+      const rawSnippet = contentIndex >= 0
+        ? documentText.slice(snippetStart, contentIndex + normalizedQuery.length + 56)
+        : file.name;
+
+      results.push({
+        folderId: folder.id,
+        folderName: folder.name,
+        file,
+        snippet: rawSnippet.replace(/\s+/g, ' ').trim(),
+      });
+    }
+
+    for (const subfolder of folder.subfolders ?? []) {
+      visitFolder(subfolder);
+    }
+  };
+
+  folders.forEach(visitFolder);
+  return results;
+}
+
+function summarizeKnowledgeFolder(parentFolder: FolderItem): KnowledgeFolderSummary | null {
+  const knowledgeFolder = parentFolder.subfolders?.find((subfolder) => subfolder.isKnowledgeFolder);
+  if (!knowledgeFolder) return null;
+
+  const getFileByName = (name: string) => knowledgeFolder.files.find((file) => file.name === name) ?? null;
+  const entityDigest = getFileByName('_entities.md');
+  const conceptDigest = getFileByName('_concepts.md');
+  const sourceCount = (() => {
+    const overviewFileId = getFileByName('_overview.md')?.id;
+    if (!overviewFileId) return 0;
+    const overviewText = SAMPLE_CONTENTS[overviewFileId] ?? '';
+    return (overviewText.match(/^###\s+/gm) ?? []).length;
+  })();
+
+  return {
+    folderId: knowledgeFolder.id,
+    parentFolderId: parentFolder.id,
+    parentFolderName: parentFolder.name,
+    totalFiles: knowledgeFolder.files.length,
+    generatedAt: knowledgeFolder.files[0]?.date ?? null,
+    sourceCount,
+    outputs: [
+      {
+        key: 'index',
+        label: '인덱스',
+        fileName: 'index.md',
+        fileId: getFileByName('index.md')?.id ?? null,
+        description: '전체 구조와 문서 이동 출발점',
+        countLabel: '허브',
+      },
+      {
+        key: 'overview',
+        label: '종합 개요',
+        fileName: '_overview.md',
+        fileId: getFileByName('_overview.md')?.id ?? null,
+        description: '핵심 요약과 원본 문서별 요약 정리',
+        countLabel: `${sourceCount}개 요약`,
+      },
+      {
+        key: 'entities',
+        label: '엔티티 묶음',
+        fileName: '_entities.md',
+        fileId: entityDigest?.id ?? null,
+        description: '인물, 도구, 서비스, 조직 등 핵심 객체 정리',
+        countLabel: (() => {
+          const text = entityDigest ? (SAMPLE_CONTENTS[entityDigest.id] ?? '') : '';
+          const count = (text.match(/^##\s+/gm) ?? []).length;
+          return `${Math.max(0, count)}개 항목`;
+        })(),
+      },
+      {
+        key: 'concepts',
+        label: '개념 묶음',
+        fileName: '_concepts.md',
+        fileId: conceptDigest?.id ?? null,
+        description: '핵심 개념, 정의, 관련 연결을 한 문서로 정리',
+        countLabel: (() => {
+          const text = conceptDigest ? (SAMPLE_CONTENTS[conceptDigest.id] ?? '') : '';
+          const count = (text.match(/^##\s+/gm) ?? []).length;
+          return `${Math.max(0, count)}개 항목`;
+        })(),
+      },
+      {
+        key: 'log',
+        label: '처리 로그',
+        fileName: 'log.md',
+        fileId: getFileByName('log.md')?.id ?? null,
+        description: '생성 규칙, 처리 시간, 결과 메모 확인',
+        countLabel: '기록',
+      },
+    ],
+  };
+}
 
 const DEFAULT_MD_CONTENT = SAMPLE_CONTENTS['f1'] || '';
 
@@ -135,7 +214,7 @@ const EditorPage: React.FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auth
-  const { authState, signIn, signOut } = useAuth();
+  const { authState, signIn, signInWithEmail, signOut } = useAuth();
 
   // 폴더/파일 상태
   const [folders, setFolders] = useState<FolderItem[]>(INITIAL_FOLDERS);
@@ -148,7 +227,6 @@ const EditorPage: React.FC = () => {
   const [isEditorVisible, setIsEditorVisible] = useState(true);
   const [renderMode, setRenderMode] = useState<'md' | 'html'>('md');
   const [isStyleModalOpen, setIsStyleModalOpen] = useState(false);
-  const [selectedStyle, setSelectedStyle] = useState(DESIGN_TEMPLATES[5]);
 
   // 새 기능 상태
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -159,13 +237,18 @@ const EditorPage: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isGeneratingKnowledge, setIsGeneratingKnowledge] = useState(false);
   const [knowledgeProgress, setKnowledgeProgress] = useState('');
+  const [workspaceSearchQuery, setWorkspaceSearchQuery] = useState('');
+  const [documentFindQuery, setDocumentFindQuery] = useState('');
+  const [documentReplaceQuery, setDocumentReplaceQuery] = useState('');
+  const [documentFindIndex, setDocumentFindIndex] = useState(0);
 
   // View Settings
-  const [fontSize, setFontSize] = useState(18);
-  const [lineHeight, setLineHeight] = useState(1.8);
-  const [docWidth, setDocWidth] = useState('800px');
-  const [docPadding, setDocPadding] = useState(60);
-  const [isDarkPreview, setIsDarkPreview] = useState(false);
+  const [selectedStyle, setSelectedStyle] = useState(() => DESIGN_TEMPLATES.find((template) => template.id === DEFAULT_VIEWER_SETTINGS.templateId) ?? DESIGN_TEMPLATES[5]);
+  const [fontSize, setFontSize] = useState(DEFAULT_VIEWER_SETTINGS.fontSize);
+  const [lineHeight, setLineHeight] = useState(DEFAULT_VIEWER_SETTINGS.lineHeight);
+  const [docWidth, setDocWidth] = useState(DEFAULT_VIEWER_SETTINGS.docWidth);
+  const [docPadding, setDocPadding] = useState(DEFAULT_VIEWER_SETTINGS.padding);
+  const [isDarkPreview, setIsDarkPreview] = useState(DEFAULT_VIEWER_SETTINGS.isDark);
   const [showPageGuides, setShowPageGuides] = useState(false);
 
   // Split pane
@@ -177,9 +260,16 @@ const EditorPage: React.FC = () => {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [externalFileStates, setExternalFileStates] = useState<Record<string, ExternalFileState>>({});
+  const [workspaceSyncState, setWorkspaceSyncState] = useState<WorkspaceSyncState>({
+    status: 'local-only',
+    lastSyncedAt: null,
+    lastError: null,
+  });
+  const [isWorkspaceReady, setIsWorkspaceReady] = useState(false);
 
   // unified 파이프라인 파서
   const { setMarkdown, result, isParsing } = useMarkdownParser(250);
+  const authWorkspaceKey = authState.status === 'authenticated' ? authState.user.uid : 'guest';
 
   // 현재 선택된 폴더/파일
   const currentFolder = useMemo(() => {
@@ -228,11 +318,255 @@ const EditorPage: React.FC = () => {
           })}`
         : '현재 에디터 내용이 원본 파일과 같습니다.'
     : null;
+  const workspaceStatusLabel = authState.status === 'authenticated'
+    ? workspaceSyncState.status === 'synced'
+      ? '클라우드 동기화 완료'
+      : workspaceSyncState.status === 'syncing'
+        ? '클라우드 동기화 중'
+        : '클라우드 동기화 대기'
+    : '로컬 자동저장';
+  const workspaceStatusTone = authState.status === 'authenticated'
+    ? workspaceSyncState.status === 'synced'
+      ? 'border-[#10B981]/20 bg-[#ECFDF5] text-[#059669]'
+      : 'border-amber-200 bg-amber-50 text-amber-700'
+    : 'border-[#E2E8F0] bg-[#F7FAFC] text-[#1A202C]/55';
+  const workspaceSearchResults = useMemo(
+    () => collectWorkspaceSearchResults(folders, workspaceSearchQuery),
+    [folders, workspaceSearchQuery, content],
+  );
+  const activeKnowledgeSummary = useMemo(() => {
+    const directParent = folders.find((folder) => folder.id === selectedFolderId);
+    if (directParent) return summarizeKnowledgeFolder(directParent);
+
+    const parentFolder = folders.find((folder) => folder.subfolders?.some((subfolder) => subfolder.id === selectedFolderId));
+    return parentFolder ? summarizeKnowledgeFolder(parentFolder) : null;
+  }, [folders, selectedFolderId]);
+  const documentFindMatches = useMemo(() => {
+    const query = documentFindQuery.trim().toLowerCase();
+    if (!query) return [] as number[];
+    const source = content.toLowerCase();
+    const matches: number[] = [];
+    let index = source.indexOf(query);
+    while (index !== -1) {
+      matches.push(index);
+      index = source.indexOf(query, index + Math.max(1, query.length));
+    }
+    return matches;
+  }, [content, documentFindQuery]);
+
+  const applyViewerSettings = useCallback((settings: ViewerSettings) => {
+    const nextTemplate = DESIGN_TEMPLATES.find((template) => template.id === settings.templateId) ?? DESIGN_TEMPLATES[5];
+    setSelectedStyle(nextTemplate);
+    setFontSize(settings.fontSize);
+    setLineHeight(settings.lineHeight);
+    setDocWidth(settings.docWidth);
+    setDocPadding(settings.padding);
+    setIsDarkPreview(settings.isDark);
+  }, []);
+
+  const currentViewerSettings = useMemo<ViewerSettings>(() => ({
+    templateId: selectedStyle.id,
+    fontSize,
+    lineHeight,
+    padding: docPadding,
+    docWidth: docWidth as ViewerSettings['docWidth'],
+    isDark: isDarkPreview,
+  }), [selectedStyle.id, fontSize, lineHeight, docPadding, docWidth, isDarkPreview]);
+
+  const persistViewerSettings = useCallback((patch: Partial<ViewerSettings>) => {
+    const nextSettings: ViewerSettings = {
+      ...currentViewerSettings,
+      ...patch,
+    };
+    applyViewerSettings(nextSettings);
+    void saveViewerSettings(nextSettings);
+  }, [applyViewerSettings, currentViewerSettings]);
+
+  const focusFindInput = useCallback(() => {
+    const input = document.getElementById('noleji-document-find') as HTMLInputElement | null;
+    if (!input) return;
+    input.focus();
+    const end = input.value.length;
+    input.setSelectionRange(end, end);
+  }, []);
 
   const updateEditorContent = useCallback((nextContent: string) => {
     SAMPLE_CONTENTS[selectedFileId] = nextContent;
     setContent(nextContent);
   }, [selectedFileId]);
+
+  const handleSelectSearchResult = useCallback((result: WorkspaceFileSearchResult) => {
+    setSelectedFolderId(result.folderId);
+    setSelectedFileId(result.file.id);
+    setWorkspaceSearchQuery('');
+  }, []);
+
+  const openKnowledgeFolder = useCallback((summary: KnowledgeFolderSummary | null) => {
+    if (!summary) return;
+    setSelectedFolderId(summary.folderId);
+    const preferredFile = summary.outputs.find((output) => output.key === 'index')?.fileId ?? summary.outputs[0]?.fileId ?? null;
+    if (preferredFile) {
+      setSelectedFileId(preferredFile);
+    }
+  }, []);
+
+  const openKnowledgeOutput = useCallback((summary: KnowledgeFolderSummary | null, fileId: string | null) => {
+    if (!summary || !fileId) return;
+    setSelectedFolderId(summary.folderId);
+    setSelectedFileId(fileId);
+  }, []);
+
+  const focusDocumentMatch = useCallback((nextIndex: number) => {
+    if (!textareaRef.current || documentFindMatches.length === 0) return;
+    const safeIndex = ((nextIndex % documentFindMatches.length) + documentFindMatches.length) % documentFindMatches.length;
+    const start = documentFindMatches[safeIndex];
+    const end = start + documentFindQuery.trim().length;
+    textareaRef.current.focus();
+    textareaRef.current.setSelectionRange(start, end);
+    textareaRef.current.scrollTop = Math.max(0, textareaRef.current.scrollHeight * (start / Math.max(1, content.length)) - textareaRef.current.clientHeight / 2);
+    setDocumentFindIndex(safeIndex);
+    window.requestAnimationFrame(() => {
+      focusFindInput();
+    });
+  }, [content.length, documentFindMatches, documentFindQuery, focusFindInput]);
+
+  const handleDocumentFindNext = useCallback(() => {
+    focusDocumentMatch(documentFindIndex + 1);
+  }, [documentFindIndex, focusDocumentMatch]);
+
+  const handleDocumentFindPrevious = useCallback(() => {
+    focusDocumentMatch(documentFindIndex - 1);
+  }, [documentFindIndex, focusDocumentMatch]);
+
+  const handleDocumentReplace = useCallback((replaceAll = false) => {
+    const query = documentFindQuery.trim();
+    if (!query) return;
+
+    if (replaceAll) {
+      if (!content.includes(query)) return;
+      const nextContent = content.split(query).join(documentReplaceQuery);
+      updateEditorContent(nextContent);
+      setToast({ message: '문서의 모든 일치 항목을 바꿨습니다.', type: 'success' });
+      return;
+    }
+
+    if (documentFindMatches.length === 0) return;
+
+    const safeIndex = Math.min(documentFindIndex, documentFindMatches.length - 1);
+    const start = documentFindMatches[safeIndex];
+    const end = start + query.length;
+    const nextContent = `${content.slice(0, start)}${documentReplaceQuery}${content.slice(end)}`;
+    updateEditorContent(nextContent);
+    setToast({ message: '현재 일치 항목을 바꿨습니다.', type: 'success' });
+
+    window.requestAnimationFrame(() => {
+      focusFindInput();
+    });
+  }, [content, documentFindIndex, documentFindMatches, documentFindQuery, documentReplaceQuery, focusFindInput, updateEditorContent]);
+
+  useEffect(() => {
+    if (authState.status === 'loading') return;
+
+    let cancelled = false;
+
+    void loadWorkspaceState(authState.status === 'authenticated' ? authState.user : null).then((workspace) => {
+      if (cancelled) return;
+      hydrateSampleContents(workspace.documents);
+      setFolders(workspace.folders);
+      setSelectedFolderId(workspace.selectedFolderId);
+      setSelectedFileId(workspace.selectedFileId);
+      setContent(workspace.documents[workspace.selectedFileId] ?? DEFAULT_MD_CONTENT);
+      setWorkspaceSyncState(workspace.cloudSync);
+      setIsWorkspaceReady(true);
+    }).catch(() => {
+      if (cancelled) return;
+      const fallbackDocuments = { ...SAMPLE_CONTENTS };
+      setFolders(INITIAL_FOLDERS);
+      setSelectedFolderId(INITIAL_FOLDERS[0].id);
+      setSelectedFileId(INITIAL_FOLDERS[0].files[0].id);
+      setContent(fallbackDocuments[INITIAL_FOLDERS[0].files[0].id] ?? DEFAULT_MD_CONTENT);
+      setWorkspaceSyncState({ status: 'local-only', lastSyncedAt: null, lastError: '워크스페이스를 불러오지 못했습니다.' });
+      setIsWorkspaceReady(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authState, authWorkspaceKey]);
+
+  useEffect(() => {
+    if (!isWorkspaceReady || authState.status === 'loading') return;
+
+    const timeout = window.setTimeout(async () => {
+      const provisionalSyncState: WorkspaceSyncState = authState.status === 'authenticated'
+        ? {
+            status: 'sync-pending',
+            lastSyncedAt: workspaceSyncState.lastSyncedAt,
+            lastError: null,
+          }
+        : {
+            status: 'local-only',
+            lastSyncedAt: null,
+            lastError: null,
+          };
+
+      const snapshot = buildWorkspaceSnapshot({
+        folders,
+        selectedFolderId,
+        selectedFileId,
+        cloudSync: provisionalSyncState,
+      });
+      saveWorkspaceState(snapshot);
+
+      if (authState.status === 'authenticated') {
+        setWorkspaceSyncState({
+          status: 'syncing',
+          lastSyncedAt: provisionalSyncState.lastSyncedAt,
+          lastError: null,
+        });
+        try {
+          const synced = await syncWorkspaceToCloud(snapshot, authState.user);
+          saveWorkspaceState({ ...snapshot, cloudSync: synced });
+          setWorkspaceSyncState(synced);
+        } catch {
+          setWorkspaceSyncState({
+            status: 'sync-pending',
+            lastSyncedAt: provisionalSyncState.lastSyncedAt,
+            lastError: '동기화 실패',
+          });
+        }
+        return;
+      }
+
+      setWorkspaceSyncState(provisionalSyncState);
+    }, 400);
+
+    return () => window.clearTimeout(timeout);
+  }, [folders, selectedFolderId, selectedFileId, content, authState, authWorkspaceKey, isWorkspaceReady]);
+
+  useEffect(() => {
+    let active = true;
+
+    void loadViewerSettings().then((settings) => {
+      if (!active) return;
+      applyViewerSettings(settings);
+    });
+
+    if (!window.electronAPI?.onSettingsChanged) {
+      return () => {
+        active = false;
+      };
+    }
+
+    const unsubscribe = window.electronAPI.onSettingsChanged((settings) => {
+      applyViewerSettings(settings);
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [applyViewerSettings]);
 
   // 파일 선택 시 샘플 콘텐츠 로드
   useEffect(() => {
@@ -241,6 +575,37 @@ const EditorPage: React.FC = () => {
       setContent(sampleContent);
     }
   }, [selectedFileId]);
+
+  useEffect(() => {
+    setDocumentFindIndex(0);
+  }, [documentFindQuery]);
+
+  useEffect(() => {
+    if (documentFindMatches.length === 0) {
+      setDocumentFindIndex(0);
+      return;
+    }
+    setDocumentFindIndex((prev) => Math.min(prev, documentFindMatches.length - 1));
+  }, [documentFindMatches.length]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        const input = document.getElementById('noleji-document-find') as HTMLInputElement | null;
+        input?.focus();
+        input?.select();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        const input = document.getElementById('noleji-workspace-search') as HTMLInputElement | null;
+        input?.focus();
+        input?.select();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // content → 파서 전달
   useEffect(() => {
@@ -479,7 +844,7 @@ const EditorPage: React.FC = () => {
       const knowledgeFolderId = `knowledge-${selectedFolderId}-${Date.now()}`;
       const today = new Date().toISOString().slice(0, 10);
 
-      // Convert WikiPages to FileItems, organized by type
+      // Convert WikiPages to 5 workspace knowledge assets
       const knowledgeFiles: FileItem[] = [];
       const entityPages = wikiResult.pages.filter((p: WikiPage) => p.type === 'entity');
       const conceptPages = wikiResult.pages.filter((p: WikiPage) => p.type === 'concept');
@@ -487,43 +852,117 @@ const EditorPage: React.FC = () => {
       const overviewPage = wikiResult.pages.find((p: WikiPage) => p.type === 'overview');
       const indexPage = wikiResult.pages.find((p: WikiPage) => p.type === 'index');
       const logPage = wikiResult.pages.find((p: WikiPage) => p.type === 'log');
+      const saveKnowledgePage = (fid: string, name: string, page: WikiPage) => {
+        knowledgeFiles.push({ id: fid, name, type: 'md', date: today, origin: 'generated' });
+        SAMPLE_CONTENTS[fid] = buildFullPage(page);
+      };
+      const buildDigestPage = (
+        id: string,
+        title: string,
+        type: WikiPage['type'],
+        tags: string[],
+        body: string,
+        related: string[],
+      ): WikiPage => ({
+        id,
+        title,
+        type,
+        content: body,
+        frontmatter: {
+          title,
+          type,
+          tags,
+          sources: folder.files.map((file) => file.name),
+          created: today,
+          updated: today,
+          related,
+        },
+      });
+      const buildCollectionBody = (
+        heading: string,
+        intro: string,
+        pages: WikiPage[],
+        emptyMessage: string,
+      ) => {
+        if (pages.length === 0) {
+          return `# ${heading}\n\n${intro}\n\n> ${emptyMessage}`;
+        }
 
-      // Add special pages first
-      if (indexPage) {
+        const toc = pages.map((page, index) => `${index + 1}. ${page.title}`).join('\n');
+        const sections = pages.map((page) => `## ${page.title}\n\n${page.content}`).join('\n\n---\n\n');
+        return `# ${heading}\n\n${intro}\n\n## 포함 항목\n${toc}\n\n---\n\n${sections}`;
+      };
+
+      const overviewBodyParts = [overviewPage?.content ?? '# 종합 개요\n\n> 생성된 지식 체계의 상위 요약입니다.'];
+      if (sourcePages.length > 0) {
+        const sourceSummarySections = sourcePages
+          .map((page) => `### ${page.title}\n\n${page.content}`)
+          .join('\n\n');
+        overviewBodyParts.push(`## 원본 문서 요약\n\n${sourceSummarySections}`);
+      }
+
+      const overviewDocumentPage = buildDigestPage(
+        'overview-digest',
+        overviewPage?.title ?? '종합 개요',
+        'overview',
+        overviewPage?.frontmatter.tags ?? ['개요', '종합'],
+        overviewBodyParts.join('\n\n---\n\n'),
+        overviewPage?.frontmatter.related ?? [],
+      );
+      const entityDigestPage = buildDigestPage(
+        'entities-digest',
+        '엔티티 묶음',
+        'entity',
+        ['엔티티', '묶음'],
+        buildCollectionBody('엔티티 묶음', '폴더에서 추출된 핵심 엔티티를 한 문서에서 빠르게 훑어볼 수 있도록 묶었습니다.', entityPages, '추출된 엔티티가 없습니다.'),
+        entityPages.map((page) => page.title),
+      );
+      const conceptDigestPage = buildDigestPage(
+        'concepts-digest',
+        '개념 묶음',
+        'concept',
+        ['개념', '묶음'],
+        buildCollectionBody('개념 묶음', '핵심 개념과 정의, 관련 연결을 한 문서에서 연속적으로 읽을 수 있게 정리했습니다.', conceptPages, '추출된 개념이 없습니다.'),
+        conceptPages.map((page) => page.title),
+      );
+
+      const fallbackIndexPage = buildDigestPage(
+        'index-fallback',
+        '인덱스',
+        'index',
+        ['인덱스', '목차'],
+        wikiResult.indexContent || '# 인덱스\n\n> 생성된 지식 체계의 문서 진입점입니다.',
+        [],
+      );
+      const fallbackLogPage = buildDigestPage(
+        'log-fallback',
+        '처리 로그',
+        'log',
+        ['로그', '처리기록'],
+        wikiResult.logContent || '# 처리 로그\n\n> 이번 지식 체계 생성 기록입니다.',
+        [],
+      );
+
+      // Save exactly 5 files
+      {
         const fid = `${knowledgeFolderId}-index`;
-        knowledgeFiles.push({ id: fid, name: 'index.md', type: 'md', date: today });
-        SAMPLE_CONTENTS[fid] = indexPage.content;
+        saveKnowledgePage(fid, 'index.md', indexPage ?? fallbackIndexPage);
       }
-      if (overviewPage) {
+      {
         const fid = `${knowledgeFolderId}-overview`;
-        knowledgeFiles.push({ id: fid, name: '_overview.md', type: 'md', date: today });
-        SAMPLE_CONTENTS[fid] = overviewPage.content;
+        saveKnowledgePage(fid, '_overview.md', overviewDocumentPage);
       }
-      if (logPage) {
+      {
+        const fid = `${knowledgeFolderId}-entities`;
+        saveKnowledgePage(fid, '_entities.md', entityDigestPage);
+      }
+      {
+        const fid = `${knowledgeFolderId}-concepts`;
+        saveKnowledgePage(fid, '_concepts.md', conceptDigestPage);
+      }
+      {
         const fid = `${knowledgeFolderId}-log`;
-        knowledgeFiles.push({ id: fid, name: 'log.md', type: 'md', date: today });
-        SAMPLE_CONTENTS[fid] = logPage.content;
-      }
-
-      // Add entity pages
-      for (const page of entityPages) {
-        const fid = `${knowledgeFolderId}-e-${page.id}`;
-        knowledgeFiles.push({ id: fid, name: `[엔티티] ${page.title}.md`, type: 'md', date: today });
-        SAMPLE_CONTENTS[fid] = page.content;
-      }
-
-      // Add concept pages
-      for (const page of conceptPages) {
-        const fid = `${knowledgeFolderId}-c-${page.id}`;
-        knowledgeFiles.push({ id: fid, name: `[개념] ${page.title}.md`, type: 'md', date: today });
-        SAMPLE_CONTENTS[fid] = page.content;
-      }
-
-      // Add source summary pages
-      for (const page of sourcePages) {
-        const fid = `${knowledgeFolderId}-s-${page.id}`;
-        knowledgeFiles.push({ id: fid, name: `[요약] ${page.title}.md`, type: 'md', date: today });
-        SAMPLE_CONTENTS[fid] = page.content;
+        saveKnowledgePage(fid, 'log.md', logPage ?? fallbackLogPage);
       }
 
       const knowledgeSubfolder: FolderItem = {
@@ -542,8 +981,10 @@ const EditorPage: React.FC = () => {
         setContent(SAMPLE_CONTENTS[firstFileId] || '');
       }
 
-      const { stats } = wikiResult;
-      setToast({ message: `지식 체계 생성 완료! (엔티티 ${stats.entityCount}개, 개념 ${stats.conceptCount}개, 총 ${stats.totalPages}페이지)`, type: 'success' });
+      setToast({
+        message: `_지식체계에 5개의 핵심 Markdown 산출물을 생성했습니다. index.md부터 열어 전체 구조를 확인하세요.`,
+        type: 'success',
+      });
     } catch (err) {
       setToast({ message: '지식 체계 생성 중 오류가 발생했습니다.', type: 'error' });
     } finally {
@@ -789,6 +1230,15 @@ const EditorPage: React.FC = () => {
       /* ── 이미지 ── */
       img { max-width: 100%; border-radius: 12px; margin: 1.5em 0; box-shadow: 0 4px 20px rgba(0,0,0,0.08); border: 1px solid ${borderClr}; }
 
+      @media (max-width: 768px) {
+        body { padding: 20px !important; font-size: ${Math.max(14, fontSize - 2)}px !important; }
+        h1 { font-size: 2em !important; }
+        h2 { font-size: 1.45em !important; }
+        h3 { font-size: 1.18em !important; }
+        table { display: block; overflow-x: auto; white-space: nowrap; }
+        pre { overflow-x: auto; }
+      }
+
       /* ── 인쇄 ── */
       @media print {
         @page { margin: 2cm; size: A4; }
@@ -827,6 +1277,14 @@ const EditorPage: React.FC = () => {
       table { border-collapse: collapse; width: 100%; margin: 1em 0; }
       th, td { border: 1px solid ${isDarkPreview ? '#4A5568' : '#E2E8F0'}; padding: 10px 14px; text-align: left; }
       th { background: ${isDarkPreview ? '#2D3748' : '#F7FAFC'}; font-weight: 600; }
+      @media (max-width: 768px) {
+        body { padding: 20px !important; font-size: ${Math.max(14, fontSize - 2)}px !important; }
+        h1 { font-size: 2em !important; }
+        h2 { font-size: 1.45em !important; }
+        h3 { font-size: 1.18em !important; }
+        table { display: block; overflow-x: auto; white-space: nowrap; }
+        pre { overflow-x: auto; }
+      }
       @media print {
         @page { margin: 2cm; size: A4; }
         body { font-size: 12pt !important; color: #000 !important; background: #fff !important; padding: 0 !important; }
@@ -835,13 +1293,13 @@ const EditorPage: React.FC = () => {
   `, [selectedStyle, fontSize, lineHeight, isDarkPreview, docPadding]);
 
   /* ── Markdown srcDoc ── */
-  const mdSrcDoc = useMemo(() => `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">${iframeMdStyles}</head><body>${result.html}</body></html>`, [result.html, iframeMdStyles]);
+  const mdSrcDoc = useMemo(() => `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">${iframeMdStyles}</head><body>${result.html}</body></html>`, [result.html, iframeMdStyles]);
 
   /* ── HTML srcDoc ── */
   const htmlSrcDoc = useMemo(() => {
     const trimmed = content.trim().toLowerCase();
     if (trimmed.startsWith('<!doctype') || trimmed.startsWith('<html')) return content;
-    return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><script src="https://cdn.tailwindcss.com"><\/script>${iframeHtmlStyles}</head><body>${content}</body></html>`;
+    return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.tailwindcss.com"><\/script>${iframeHtmlStyles}</head><body>${content}</body></html>`;
   }, [content, iframeHtmlStyles]);
 
   /* ── 페이지 가이드 ── */
@@ -913,7 +1371,7 @@ const EditorPage: React.FC = () => {
       return;
     }
     trackPremiumAction('pdf');
-    const iframe = document.getElementById('docwise-render') as HTMLIFrameElement;
+    const iframe = document.getElementById('noleji-view-render') as HTMLIFrameElement;
     const body = iframe?.contentDocument?.body;
     if (!body) {
       setToast({ message: 'PDF 생성 실패: 렌더링 영역을 찾을 수 없습니다.', type: 'error' });
@@ -921,30 +1379,64 @@ const EditorPage: React.FC = () => {
     }
     setToast({ message: 'PDF 생성 중...', type: 'success' });
     try {
-      const canvas = await html2canvas(body, { scale: 2, useCORS: true, allowTaint: true });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const scale = Math.min(1.5, Math.max(1.1, window.devicePixelRatio || 1));
+      const canvas = await html2canvas(body, {
+        scale,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#FFFFFF',
+      });
+      const imgData = canvas.toDataURL('image/jpeg', 0.72);
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
       const pageWidth = 210;
       const pageHeight = 297;
       const imgWidth = pageWidth;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
       let heightLeft = imgHeight;
       let position = 0;
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'MEDIUM');
       heightLeft -= pageHeight;
       while (heightLeft > 0) {
         position -= pageHeight;
         pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'MEDIUM');
         heightLeft -= pageHeight;
       }
       const pdfName = currentFile.name.replace(/\.(md|html)$/, '') + '.pdf';
       pdf.save(pdfName);
       setToast({ message: `${pdfName} 다운로드 완료`, type: 'success' });
-    } catch (err) {
+    } catch {
       setToast({ message: 'PDF 생성 중 오류가 발생했습니다.', type: 'error' });
     }
   }, [currentFile]);
+
+  const shareLinkWithSystem = useCallback(async (shareUrl: string, toastMessage: string) => {
+    try {
+      if (window.electronAPI?.shareLink) {
+        await window.electronAPI.shareLink({
+          url: shareUrl,
+          title: `${BRAND_NAME} 공유 링크`,
+          text: `${BRAND_NAME}에서 공유한 문서 링크입니다.`,
+        });
+      } else {
+        await navigator.clipboard.writeText(shareUrl);
+        if (navigator.share) {
+          try {
+            await navigator.share({
+              title: `${BRAND_NAME} 공유 링크`,
+              text: `${BRAND_NAME}에서 공유한 문서 링크입니다.`,
+              url: shareUrl,
+            });
+          } catch {
+            // 사용자가 시트를 닫은 경우에도 링크 복사는 유지한다.
+          }
+        }
+      }
+      setToast({ message: toastMessage, type: 'success' });
+    } catch {
+      setToast({ message: '공유 링크 복사 중 오류가 발생했습니다.', type: 'error' });
+    }
+  }, []);
 
   /* ── 핸들러: Publish (공유) ── */
   const handlePublish = useCallback(async () => {
@@ -956,52 +1448,46 @@ const EditorPage: React.FC = () => {
       }
       trackPremiumAction('share_link');
     }
+
     setIsUploading(true);
     const fullHtml = renderMode === 'md' ? mdSrcDoc : htmlSrcDoc;
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise((resolve) => setTimeout(resolve, 250));
 
-    if (shareMode === 'internal') {
-      const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `shared-${currentFile.name.replace(/\.(md|html)$/, '')}.html`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setToast({ message: '공유용 HTML 파일이 다운로드되었습니다. 내부 서버에 업로드하여 공유하세요.', type: 'success' });
-    } else {
-      const plan = getUserPlan();
-      const isPaid = plan === 'monthly' || plan === 'lifetime';
-      const token = isPaid ? getGithubToken() : null;
-
-      if (isPaid && token) {
-        // Paid user with GitHub token → permanent Gist link
-        try {
-          const gistId = await publishToGist(fullHtml, currentFile.name, token);
-          const baseUrl = window.location.hostname === 'localhost'
-            ? `${window.location.protocol}//${window.location.host}`
-            : 'https://noleji-ai.github.io/docwise';
-          const shareUrl = `${baseUrl}/shared/gist:${gistId}`;
-          await navigator.clipboard.writeText(shareUrl);
-          setToast({ message: `영구 링크가 복사되었습니다!`, type: 'success' });
-        } catch (err) {
-          setToast({ message: `Gist 업로드 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`, type: 'error' });
-        }
+    try {
+      if (authState.status === 'authenticated' && authState.user.entitlements.linkSharing && shareMode === 'external') {
+        const sharedRecord = await createSharedDocument({
+          title: currentFile.name,
+          html: fullHtml,
+          ownerId: authState.user.uid,
+          visibility: 'link',
+        });
+        const baseUrl = getAppUrl();
+        const shareUrl = `${baseUrl}/shared/${sharedRecord.id}`;
+        await shareLinkWithSystem(shareUrl, '계정 기반 공유 링크를 복사했고, 가능한 환경에서는 시스템 공유 메뉴를 열었습니다.');
       } else {
-        // Free user or no token → local sharing
-        const shareId = Date.now().toString(36);
-        localStorage.setItem('docwise-shared-' + shareId, fullHtml);
-        const ip = await getLocalIP();
-        const shareUrl = `${window.location.protocol}//${ip}:${window.location.port}/shared/${shareId}`;
-        await navigator.clipboard.writeText(shareUrl);
-        const notice = isPaid && !token
-          ? '로컬 링크가 복사되었습니다. (영구 링크는 설정에서 GitHub 토큰을 등록하세요)'
-          : '로컬 링크가 복사되었습니다. (같은 네트워크에서만 접근 가능)';
-        setToast({ message: notice, type: 'success' });
+        const sharedRecord = await createSharedDocument({
+          title: currentFile.name,
+          html: fullHtml,
+          ownerId: authState.status === 'authenticated' ? authState.user.uid : null,
+          visibility: 'local',
+        });
+        const basePath = getAppBasePath();
+        const origin = window.location.hostname === 'localhost'
+          ? `${window.location.protocol}//${window.location.host}`
+          : `${window.location.protocol}//${await getLocalIP()}:${window.location.port}`;
+        const baseUrl = `${origin}${basePath}`;
+        const shareUrl = `${baseUrl}/shared/${sharedRecord.id}`;
+        await shareLinkWithSystem(
+          shareUrl,
+          authState.status === 'authenticated'
+            ? '로컬 공유 링크를 복사했고, 가능한 환경에서는 시스템 공유 메뉴를 열었습니다.'
+            : '로컬 공유 링크를 복사했고, 가능한 환경에서는 시스템 공유 메뉴를 열었습니다.'
+        );
       }
+    } finally {
+      setIsUploading(false);
     }
-    setIsUploading(false);
-  }, [renderMode, mdSrcDoc, htmlSrcDoc, shareMode, currentFile]);
+  }, [authState, currentFile.name, htmlSrcDoc, mdSrcDoc, renderMode, shareLinkWithSystem, shareMode]);
 
   // Split pane drag handler
   const handleSplitMouseDown = useCallback((e: React.MouseEvent) => {
@@ -1029,11 +1515,28 @@ const EditorPage: React.FC = () => {
     };
   }, [isDragging]);
 
+  useEffect(() => {
+    if (!isEditorVisible || isDragging || docWidth === '100%') return;
+    const container = splitContainerRef.current;
+    if (!container) return;
+
+    const containerWidth = container.getBoundingClientRect().width;
+    const docPixelWidth = Number.parseInt(docWidth, 10);
+    if (!containerWidth || Number.isNaN(docPixelWidth)) return;
+
+    const previewChromeAllowance = 140;
+    const minEditorWidth = 340;
+    const desiredPreviewPaneWidth = Math.min(containerWidth - minEditorWidth, docPixelWidth + previewChromeAllowance);
+    const nextEditorWidth = Math.max(minEditorWidth, containerWidth - desiredPreviewPaneWidth);
+    const nextRatio = Math.min(72, Math.max(22, (nextEditorWidth / containerWidth) * 100));
+    setSplitRatio(nextRatio);
+  }, [docWidth, isDragging, isEditorVisible]);
+
   // When the viewer asks the main window to edit a file, load that exact file into the editor state.
   useEffect(() => {
     if (!window.electronAPI?.onOpenInEditor) return undefined;
 
-    return window.electronAPI.onOpenInEditor(async (filePath) => {
+    const cleanup = window.electronAPI.onOpenInEditor(async (filePath) => {
       try {
         const nextContent = await window.electronAPI!.readFile(filePath);
         const fileName = filePath.split(/[/\\]/).pop() || 'opened-file.md';
@@ -1046,6 +1549,7 @@ const EditorPage: React.FC = () => {
           type,
           date: new Date().toISOString().slice(0, 10),
           sourcePath: filePath,
+          origin: 'external',
         };
 
         SAMPLE_CONTENTS[fileId] = nextContent;
@@ -1092,18 +1596,21 @@ const EditorPage: React.FC = () => {
         setToast({ message: '문서를 에디터로 여는 중 오류가 발생했습니다.', type: 'error' });
       }
     });
+
+    window.electronAPI.notifyEditorRendererReady?.();
+
+    return cleanup;
   }, []);
 
   // Open preview in viewer (Electron) or toggle fullscreen preview (web)
   const handleOpenPreview = useCallback(() => {
     const api = (window as any).electronAPI;
     if (api?.openViewer) {
-      const srcDoc = renderMode === 'md' ? mdSrcDoc : htmlSrcDoc;
-      api.openViewer(srcDoc, currentFile.name);
+      api.openViewer(content, currentFile.name, renderMode);
     } else {
       setIsEditorVisible(false);
     }
-  }, [renderMode, mdSrcDoc, htmlSrcDoc, currentFile.name]);
+  }, [content, renderMode, currentFile.name]);
 
   return (
     <div className="flex h-screen w-screen bg-[#F7FAFC] text-[#1A202C] overflow-hidden selection:bg-[#10B981]/20 font-sans antialiased">
@@ -1116,9 +1623,9 @@ const EditorPage: React.FC = () => {
           <div className="h-8 flex-shrink-0 electron-drag electron-titlebar-pad" />
           {/* Logo row */}
           <div className="flex items-center space-x-3 px-5 pb-4">
-            <div className="w-9 h-9 rounded-xl bg-[#1A202C] flex items-center justify-center text-white font-bold text-lg shadow-xl shadow-black/10">d</div>
+            <div className="w-9 h-9 rounded-xl bg-[#1A202C] flex items-center justify-center text-white font-bold text-lg shadow-xl shadow-black/10">v</div>
             <div>
-              <h1 className="text-base font-black tracking-tighter uppercase italic">docwise</h1>
+              <h1 className="text-base font-black tracking-tighter uppercase italic">{BRAND_NAME}</h1>
               <p className="text-[8px] text-[#10B981] font-black uppercase tracking-widest leading-none mt-0.5">Desktop v1.0</p>
             </div>
           </div>
@@ -1131,6 +1638,38 @@ const EditorPage: React.FC = () => {
               <h2 className="text-[9px] font-black text-[#1A202C]/30 uppercase tracking-[0.3em]">Workspaces</h2>
               <button onClick={handleAddFolder} className="text-[#1A202C]/20 hover:text-[#10B981] transition-colors" title="새 폴더"><FolderPlus size={13} /></button>
             </div>
+            <div className="relative mb-3">
+              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#1A202C]/25" />
+              <input
+                id="noleji-workspace-search"
+                value={workspaceSearchQuery}
+                onChange={(e) => setWorkspaceSearchQuery(e.target.value)}
+                placeholder="문서 검색... ⌘K"
+                className="w-full rounded-xl border border-[#E2E8F0] bg-white py-2 pl-8 pr-3 text-[11px] font-bold text-[#1A202C] placeholder:text-[#1A202C]/20 focus:border-[#10B981] focus:outline-none focus:ring-1 focus:ring-[#10B981]/20"
+              />
+            </div>
+            {workspaceSearchQuery.trim() && (
+              <div className="mb-3 rounded-2xl border border-[#E2E8F0] bg-white p-2 shadow-sm">
+                <div className="mb-1 px-1 text-[8px] font-black uppercase tracking-[0.24em] text-[#1A202C]/25">Search Results</div>
+                {workspaceSearchResults.length === 0 ? (
+                  <p className="px-1 py-2 text-[10px] font-bold text-[#1A202C]/35">검색 결과가 없습니다.</p>
+                ) : workspaceSearchResults.slice(0, 8).map((result) => (
+                  <button
+                    key={`${result.folderId}:${result.file.id}`}
+                    onClick={() => handleSelectSearchResult(result)}
+                    className="w-full rounded-xl px-2 py-2 text-left transition-colors hover:bg-[#F0FFF4]"
+                  >
+                    <div className="flex items-center gap-2">
+                      {result.file.type === 'html'
+                        ? <Code2 size={12} className="text-amber-500" />
+                        : <FileCode size={12} className="text-[#10B981]" />}
+                      <span className="truncate text-[11px] font-black text-[#1A202C]">{result.file.name}</span>
+                    </div>
+                    <p className="mt-0.5 truncate text-[9px] font-bold text-[#1A202C]/35">{result.folderName} · {result.snippet}</p>
+                  </button>
+                ))}
+              </div>
+            )}
             {folders.map((folder) => {
               const isSelected = selectedFolderId === folder.id;
               return (
@@ -1218,21 +1757,98 @@ const EditorPage: React.FC = () => {
             ))}
 
             {/* 지식 체계 생성 버튼 */}
-            <div className="mt-3 pt-3 border-t border-[#E2E8F0]/50">
-              <button
-                onClick={handleGenerateKnowledge}
-                disabled={isGeneratingKnowledge || !llmConfig.isConnected}
-                className={`w-full px-3 py-2.5 text-[11px] font-bold rounded-xl transition-all flex items-center space-x-2 ${
-                  llmConfig.isConnected
-                    ? 'bg-[#7C3AED]/5 text-[#7C3AED] hover:bg-[#7C3AED]/10 border border-[#7C3AED]/20'
-                    : 'bg-[#F7FAFC] text-[#1A202C]/20 border border-[#E2E8F0] cursor-not-allowed'
-                }`}
-                title={!llmConfig.isConnected ? '설정에서 LLM을 먼저 연결하세요' : '폴더 내 문서를 분석하여 지식 체계 생성'}
-              >
-                {isGeneratingKnowledge
-                  ? <><div className="w-3 h-3 border-2 border-[#7C3AED]/30 border-t-[#7C3AED] rounded-full animate-spin" /><span>{knowledgeProgress}</span></>
-                  : <><Sparkles size={13} /><span>지식 체계 생성</span></>}
-              </button>
+            <div className="mt-3 pt-3 border-t border-[#E2E8F0]/50 space-y-2.5">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleGenerateKnowledge}
+                  disabled={isGeneratingKnowledge || !llmConfig.isConnected}
+                  className={`flex-1 px-3 py-2.5 text-[11px] font-bold rounded-xl transition-all flex items-center space-x-2 ${
+                    llmConfig.isConnected
+                      ? 'bg-[#7C3AED]/5 text-[#7C3AED] hover:bg-[#7C3AED]/10 border border-[#7C3AED]/20'
+                      : 'bg-[#F7FAFC] text-[#1A202C]/20 border border-[#E2E8F0] cursor-not-allowed'
+                  }`}
+                  title={!llmConfig.isConnected ? '설정에서 LLM을 먼저 연결하세요' : '폴더 내 문서를 분석하여 지식 체계 생성'}
+                >
+                  {isGeneratingKnowledge
+                    ? <><div className="w-3 h-3 border-2 border-[#7C3AED]/30 border-t-[#7C3AED] rounded-full animate-spin" /><span>{knowledgeProgress}</span></>
+                    : <><Sparkles size={13} /><span>지식 체계 생성</span></>}
+                </button>
+                <div className="relative group">
+                  <button
+                    type="button"
+                    className="flex h-[42px] w-[42px] items-center justify-center rounded-xl border border-[#7C3AED]/20 bg-white text-[#7C3AED] transition-colors hover:bg-[#FAF5FF]"
+                    aria-label="지식 체계 사용 방법"
+                  >
+                    <Info size={14} />
+                  </button>
+                  <div className="pointer-events-none absolute right-0 top-[48px] z-20 hidden w-80 rounded-2xl border border-[#7C3AED]/15 bg-white p-4 text-left shadow-2xl group-hover:block">
+                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#7C3AED]/55">Knowledge Guide</p>
+                    <h4 className="mt-1 text-[13px] font-black text-[#1A202C]">지식 체계 사용 방법</h4>
+                    <div className="mt-3 space-y-3 text-[10px] font-bold text-[#1A202C]/60">
+                      <div>
+                        <p className="text-[#1A202C]">1. 무엇을 분석하나요?</p>
+                        <p className="mt-1">현재 선택한 폴더 안의 Markdown/HTML 파일을 기준으로 엔티티, 개념, 원본 요약을 추출합니다.</p>
+                      </div>
+                      <div>
+                        <p className="text-[#1A202C]">2. 결과는 어디에 생기나요?</p>
+                        <p className="mt-1">선택한 폴더 바로 아래에 `_지식체계` 하위폴더가 만들어지고, 항상 5개의 핵심 산출물만 정리됩니다.</p>
+                      </div>
+                      <div>
+                        <p className="text-[#1A202C]">3. 생성되는 5개 산출물</p>
+                        <ul className="mt-1 space-y-1 list-disc pl-4">
+                          <li><span className="text-[#1A202C]">index.md</span> — 전체 구조와 이동 허브</li>
+                          <li><span className="text-[#1A202C]">_overview.md</span> — 종합 개요 + 원본 문서 요약</li>
+                          <li><span className="text-[#1A202C]">_entities.md</span> — 핵심 엔티티 묶음</li>
+                          <li><span className="text-[#1A202C]">_concepts.md</span> — 핵심 개념 묶음</li>
+                          <li><span className="text-[#1A202C]">log.md</span> — 처리 로그와 생성 기록</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="text-[#1A202C]">4. 어떻게 읽으면 좋나요?</p>
+                        <p className="mt-1">처음에는 index.md → overview → entities/concepts 순서로 보는 것을 추천합니다. 결과가 마음에 들지 않으면 원본 폴더를 수정한 뒤 다시 생성하면 됩니다.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {activeKnowledgeSummary && (
+                <div className="rounded-2xl border border-[#7C3AED]/15 bg-gradient-to-br from-[#FAF5FF] to-white p-3 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[#7C3AED]/55">Knowledge Output</p>
+                      <h3 className="mt-1 text-[12px] font-black text-[#1A202C]">{activeKnowledgeSummary.parentFolderName} / _지식체계</h3>
+                      <p className="mt-1 text-[10px] font-bold text-[#1A202C]/45">
+                        폴더 단위 결과 허브 · 총 {activeKnowledgeSummary.totalFiles}개 산출물 · 원본 문서 요약 {activeKnowledgeSummary.sourceCount}개 반영
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => openKnowledgeFolder(activeKnowledgeSummary)}
+                      className="rounded-xl border border-[#7C3AED]/20 bg-white px-2.5 py-1.5 text-[9px] font-black text-[#7C3AED] transition-colors hover:bg-[#7C3AED]/5"
+                    >
+                      허브 열기
+                    </button>
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-2">
+                    {activeKnowledgeSummary.outputs.map((output) => (
+                      <button
+                        key={output.key}
+                        onClick={() => openKnowledgeOutput(activeKnowledgeSummary, output.fileId)}
+                        className="w-full rounded-2xl border border-[#E9D8FD] bg-white/90 px-3 py-3 text-left transition-all hover:border-[#7C3AED]/30 hover:bg-white"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-[8px] font-black uppercase tracking-[0.2em] text-[#7C3AED]/45">{output.fileName}</p>
+                            <h4 className="mt-1 text-[11px] font-black text-[#1A202C]">{output.label}</h4>
+                            <p className="mt-1 text-[10px] font-bold text-[#1A202C]/45">{output.description}</p>
+                          </div>
+                          <span className="rounded-full bg-[#FAF5FF] px-2 py-1 text-[8px] font-black text-[#7C3AED]">{output.countLabel}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </nav>
@@ -1241,8 +1857,16 @@ const EditorPage: React.FC = () => {
           <UsageBadge />
           <div className="p-4 pt-2 flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <span className={`w-1.5 h-1.5 rounded-full ${llmConfig.isConnected ? 'bg-[#10B981]' : 'bg-[#E2E8F0]'} animate-pulse`} />
-              <span className="text-[9px] font-black text-[#1A202C]/30 uppercase tracking-tighter">{llmConfig.isConnected ? 'LLM Connected' : 'System Online'}</span>
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                authState.status === 'authenticated' || llmConfig.isConnected ? 'bg-[#10B981]' : 'bg-[#E2E8F0]'
+              } animate-pulse`} />
+              <span className="text-[9px] font-black text-[#1A202C]/30 uppercase tracking-tighter">
+                {authState.status === 'authenticated'
+                  ? 'Cloud Workspace'
+                  : llmConfig.isConnected
+                    ? 'LLM Connected'
+                    : 'Local Workspace'}
+              </span>
             </div>
             <button onClick={() => setIsSettingsOpen(true)} className="text-[#1A202C]/20 hover:text-[#1A202C] transition-colors"><Settings size={14} /></button>
           </div>
@@ -1264,6 +1888,11 @@ const EditorPage: React.FC = () => {
               <button onClick={() => setRenderMode('html')} className={`px-2.5 py-1 text-[9px] font-black rounded-md transition-all ${renderMode === 'html' ? 'bg-white shadow-sm text-amber-500' : 'text-[#1A202C]/30'}`}>HTML</button>
             </div>
             {isParsing && <div className="flex items-center space-x-1"><div className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" /><span className="text-[8px] font-bold text-[#10B981]">PARSING</span></div>}
+            {!isExternalFile && (
+              <div className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${workspaceStatusTone}`}>
+                {workspaceStatusLabel}
+              </div>
+            )}
             {isExternalFile && externalSaveStatusLabel && (
               <div className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${externalSaveStatusTone}`}>
                 {externalSaveStatusLabel}
@@ -1339,8 +1968,70 @@ const EditorPage: React.FC = () => {
           {isEditorVisible && (
             <div className="h-full border-r border-[#E2E8F0] flex flex-col bg-white flex-shrink-0" style={{ width: `${splitRatio}%` }}>
               {/* 에디터 헤더: 라벨 + 접기 버튼 */}
-              <div className="h-9 flex-shrink-0 border-b border-[#E2E8F0] bg-[#F7FAFC]/50 flex items-center justify-between px-3">
+              <div className="flex-shrink-0 h-9 border-b border-[#E2E8F0] bg-[#F7FAFC]/50 flex items-center justify-between px-3 gap-2">
                 <span className="text-[9px] font-black text-[#1A202C]/25 uppercase tracking-[0.2em]">Editor</span>
+                <div className="ml-auto flex items-center gap-1.5">
+                  <input
+                    id="noleji-document-find"
+                    value={documentFindQuery}
+                    onChange={(e) => setDocumentFindQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.shiftKey ? handleDocumentFindPrevious() : handleDocumentFindNext();
+                      }
+                    }}
+                    placeholder="찾기 ⌘F"
+                    className="h-6 w-28 rounded-md border border-[#E2E8F0] bg-white px-2 text-[9px] font-bold text-[#1A202C] placeholder:text-[#1A202C]/20 focus:border-[#10B981] focus:outline-none"
+                  />
+                  <input
+                    value={documentReplaceQuery}
+                    onChange={(e) => setDocumentReplaceQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleDocumentReplace(e.shiftKey);
+                      }
+                    }}
+                    placeholder="바꾸기"
+                    className="h-6 w-24 rounded-md border border-[#E2E8F0] bg-white px-2 text-[9px] font-bold text-[#1A202C] placeholder:text-[#1A202C]/20 focus:border-[#10B981] focus:outline-none"
+                  />
+                  <span className="min-w-12 text-right text-[8px] font-black text-[#1A202C]/25">
+                    {documentFindQuery.trim() ? `${documentFindMatches.length ? documentFindIndex + 1 : 0}/${documentFindMatches.length}` : ''}
+                  </span>
+                  <button
+                    onClick={handleDocumentFindPrevious}
+                    disabled={documentFindMatches.length === 0}
+                    className="rounded-md px-1.5 py-1 text-[9px] font-black text-[#1A202C]/35 hover:bg-[#10B981]/10 hover:text-[#10B981] disabled:opacity-25"
+                    title="이전 찾기"
+                  >
+                    이전
+                  </button>
+                  <button
+                    onClick={handleDocumentFindNext}
+                    disabled={documentFindMatches.length === 0}
+                    className="rounded-md px-1.5 py-1 text-[9px] font-black text-[#1A202C]/35 hover:bg-[#10B981]/10 hover:text-[#10B981] disabled:opacity-25"
+                    title="다음 찾기"
+                  >
+                    다음
+                  </button>
+                  <button
+                    onClick={() => handleDocumentReplace(false)}
+                    disabled={documentFindMatches.length === 0}
+                    className="rounded-md px-1.5 py-1 text-[9px] font-black text-[#1A202C]/35 hover:bg-[#10B981]/10 hover:text-[#10B981] disabled:opacity-25"
+                    title="현재 항목 바꾸기"
+                  >
+                    바꾸기
+                  </button>
+                  <button
+                    onClick={() => handleDocumentReplace(true)}
+                    disabled={documentFindMatches.length === 0}
+                    className="rounded-md px-1.5 py-1 text-[9px] font-black text-[#1A202C]/35 hover:bg-[#10B981]/10 hover:text-[#10B981] disabled:opacity-25"
+                    title="모두 바꾸기"
+                  >
+                    모두
+                  </button>
+                </div>
                 <button
                   onClick={() => setIsEditorVisible(false)}
                   className="flex items-center space-x-1 px-2 py-1 text-[9px] font-black rounded-md text-[#1A202C]/30 hover:text-[#10B981] hover:bg-[#10B981]/10 transition-all"
@@ -1382,8 +2073,8 @@ const EditorPage: React.FC = () => {
           <div className={`${isEditorVisible ? 'flex-1 min-w-0' : 'w-full'} h-full overflow-y-auto custom-scrollbar bg-[#F7FAFC] p-10 transition-all duration-500 relative`}>
             <div className={`mx-auto bg-white shadow-2xl transition-all duration-500 relative rounded-sm ${showPageGuides ? 'ring-1 ring-red-200' : ''}`} style={{ width: docWidth, minWidth: '380px' }}>
               <iframe
-                id="docwise-render"
-                title="docwise-render"
+                id="noleji-view-render"
+                title="noleji-view-render"
                 className="w-full border-none"
                 style={{ minHeight: 'calc(100vh - 160px)', height: '100%' }}
                 srcDoc={renderMode === 'md' ? mdSrcDoc : htmlSrcDoc}
@@ -1420,24 +2111,24 @@ const EditorPage: React.FC = () => {
                 {/* 폰트 사이즈 */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center text-[9px] font-black"><span className="opacity-30 uppercase">Font Size</span><span style={{ color: selectedStyle.accent }}>{fontSize}px</span></div>
-                  <input type="range" min="12" max="28" value={fontSize} onChange={(e) => setFontSize(parseInt(e.target.value))} className="w-full h-1 bg-[#E2E8F0] rounded-lg appearance-none cursor-pointer" style={{ accentColor: selectedStyle.accent }} />
+                  <input type="range" min="12" max="28" value={fontSize} onChange={(e) => persistViewerSettings({ fontSize: parseInt(e.target.value, 10) })} className="w-full h-1 bg-[#E2E8F0] rounded-lg appearance-none cursor-pointer" style={{ accentColor: selectedStyle.accent }} />
                 </div>
                 {/* 줄 간격 */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center text-[9px] font-black"><span className="opacity-30 uppercase">Line Height</span><span style={{ color: selectedStyle.accent }}>{lineHeight.toFixed(1)}</span></div>
-                  <input type="range" min="14" max="26" value={lineHeight * 10} onChange={(e) => setLineHeight(parseInt(e.target.value) / 10)} className="w-full h-1 bg-[#E2E8F0] rounded-lg appearance-none cursor-pointer" style={{ accentColor: selectedStyle.accent }} />
+                  <input type="range" min="14" max="26" value={lineHeight * 10} onChange={(e) => persistViewerSettings({ lineHeight: parseInt(e.target.value, 10) / 10 })} className="w-full h-1 bg-[#E2E8F0] rounded-lg appearance-none cursor-pointer" style={{ accentColor: selectedStyle.accent }} />
                 </div>
                 {/* 여백 */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center text-[9px] font-black"><span className="opacity-30 uppercase">Padding</span><span style={{ color: selectedStyle.accent }}>{docPadding}px</span></div>
-                  <input type="range" min="20" max="100" step="10" value={docPadding} onChange={(e) => setDocPadding(parseInt(e.target.value))} className="w-full h-1 bg-[#E2E8F0] rounded-lg appearance-none cursor-pointer" style={{ accentColor: selectedStyle.accent }} />
+                  <input type="range" min="20" max="100" step="10" value={docPadding} onChange={(e) => persistViewerSettings({ padding: parseInt(e.target.value, 10) })} className="w-full h-1 bg-[#E2E8F0] rounded-lg appearance-none cursor-pointer" style={{ accentColor: selectedStyle.accent }} />
                 </div>
                 {/* 문서 폭 */}
                 <div className="space-y-1.5">
                   <span className="text-[9px] font-black opacity-30 uppercase">Width</span>
-                  <div className="grid grid-cols-4 gap-1">
-                    {['640px', '800px', '1200px', '100%'].map(w => (
-                      <button key={w} onClick={() => setDocWidth(w)} className={`py-1.5 text-[7px] font-black border rounded-md transition-all ${docWidth === w ? 'bg-[#1A202C] text-white border-[#1A202C]' : 'bg-white text-[#1A202C]/30 border-[#E2E8F0] hover:border-[#10B981]'}`}>
+                  <div className="grid grid-cols-5 gap-1">
+                    {DOC_WIDTH_OPTIONS.map(w => (
+                      <button key={w} onClick={() => persistViewerSettings({ docWidth: w as ViewerSettings['docWidth'] })} className={`py-1.5 text-[7px] font-black border rounded-md transition-all ${docWidth === w ? 'bg-[#1A202C] text-white border-[#1A202C]' : 'bg-white text-[#1A202C]/30 border-[#E2E8F0] hover:border-[#10B981]'}`}>
                         {w === '100%' ? 'FULL' : w}
                       </button>
                     ))}
@@ -1445,7 +2136,7 @@ const EditorPage: React.FC = () => {
                 </div>
                 {/* 다크모드 + 페이지 가이드 */}
                 <div className="flex gap-1.5">
-                  <button onClick={() => setIsDarkPreview(!isDarkPreview)} className={`flex-1 py-2 rounded-lg border font-black text-[8px] transition-all flex items-center justify-center space-x-1 ${isDarkPreview ? 'bg-[#1A202C] border-[#1A202C] text-white' : 'bg-white border-[#E2E8F0] text-[#1A202C]/30'}`}>
+                  <button onClick={() => persistViewerSettings({ isDark: !isDarkPreview })} className={`flex-1 py-2 rounded-lg border font-black text-[8px] transition-all flex items-center justify-center space-x-1 ${isDarkPreview ? 'bg-[#1A202C] border-[#1A202C] text-white' : 'bg-white border-[#E2E8F0] text-[#1A202C]/30'}`}>
                     {isDarkPreview ? <Moon size={10} /> : <Sun size={10} />}<span>{isDarkPreview ? 'DARK' : 'LIGHT'}</span>
                   </button>
                   <button onClick={() => setShowPageGuides(!showPageGuides)} className={`flex-1 py-2 rounded-lg border-2 font-black text-[8px] transition-all flex items-center justify-center space-x-1 ${showPageGuides ? 'bg-red-50 border-red-200 text-red-500' : 'bg-white border-[#E2E8F0] text-[#1A202C]/30'}`}>
@@ -1492,7 +2183,7 @@ const EditorPage: React.FC = () => {
             </header>
             <div className="flex-grow overflow-y-auto p-8 grid grid-cols-3 gap-6 custom-scrollbar">
               {DESIGN_TEMPLATES.map((tmpl) => (
-                <div key={tmpl.id} onClick={() => { setSelectedStyle(tmpl); setIsStyleModalOpen(false); }}
+                <div key={tmpl.id} onClick={() => { persistViewerSettings({ templateId: tmpl.id }); setIsStyleModalOpen(false); }}
                   className={`relative h-40 rounded-[24px] border-4 p-5 cursor-pointer transition-all hover:scale-105 hover:shadow-2xl flex flex-col justify-between overflow-hidden group ${selectedStyle.id === tmpl.id ? 'border-[#10B981]' : 'border-[#E2E8F0]'}`}>
                   <div className="absolute top-0 right-0 p-3 opacity-5 group-hover:rotate-12 transition-transform"><BookOpen size={60} /></div>
                   <div>
@@ -1552,6 +2243,7 @@ const EditorPage: React.FC = () => {
         onTestConnection={handleTestConnection}
         authState={authState}
         onSignIn={signIn}
+        onEmailAuth={signInWithEmail}
         onSignOut={signOut}
       />
 

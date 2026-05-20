@@ -1,0 +1,26 @@
+{
+  "name": "Noleji View",
+  "short_name": "Noleji View",
+  "description": "Launch-ready markdown workspace optimized for desktop and mobile viewing.",
+  "start_url": "/docwise/",
+  "scope": "/docwise/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#10B981",
+  "lang": "ko",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/docwise/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/docwise/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

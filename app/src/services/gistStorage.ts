@@ -1,5 +1,5 @@
 /**
- * GitHub Gist storage for docwise permanent links
+ * GitHub Gist storage for Noleji View permanent links
  * Uses secret gists (not listed publicly, but accessible via URL)
  */
 
@@ -30,7 +30,7 @@ export async function publishToGist(
       'Accept': 'application/vnd.github+json',
     },
     body: JSON.stringify({
-      description: `docwise — ${title}`,
+      description: `Noleji View — ${title}`,
       public: false,
       files: {
         [`docwise-${Date.now().toString(36)}.html`]: {
@@ -68,3 +68,4 @@ export async function loadFromGist(gistId: string): Promise<string> {
   }
   return firstFile.content;
 }
+

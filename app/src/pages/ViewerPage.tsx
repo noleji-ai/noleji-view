@@ -239,6 +239,15 @@ function generateViewerCSS(settings: ViewerSettings): string {
 
     img { max-width: 100%; border-radius: 12px; margin: 1.5em 0; box-shadow: 0 4px 20px rgba(0,0,0,0.08); border: 1px solid ${borderClr}; }
 
+    @media (max-width: 768px) {
+      body { padding: 20px !important; font-size: ${Math.max(14, settings.fontSize - 2)}px !important; }
+      h1 { font-size: 2em !important; }
+      h2 { font-size: 1.45em !important; }
+      h3 { font-size: 1.18em !important; }
+      table { display: block; overflow-x: auto; white-space: nowrap; }
+      pre { overflow-x: auto; }
+    }
+
     @media print {
       @page { margin: 2cm; size: A4; }
       body { font-size: 12pt !important; color: #000 !important; background: #fff !important; padding: 0 !important; }
@@ -364,9 +373,9 @@ export default function ViewerPage() {
       if (trimmed.startsWith('<!doctype') || trimmed.startsWith('<html')) {
         return content;
       }
-      return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">${generateViewerCSS(settings)}</head><body>${content}</body></html>`;
+      return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">${generateViewerCSS(settings)}</head><body>${content}</body></html>`;
     }
-    return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">${generateViewerCSS(settings)}</head><body>${html}</body></html>`;
+    return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">${generateViewerCSS(settings)}</head><body>${html}</body></html>`;
   }, [content, html, isHtmlFile, settings]);
 
   /* ── Open in editor handler ── */
@@ -389,11 +398,11 @@ export default function ViewerPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F7FAFC]">
         <div className="text-center p-10">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[#1A202C] flex items-center justify-center text-white font-bold text-2xl">d</div>
+          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[#1A202C] flex items-center justify-center text-white font-bold text-2xl">v</div>
           <h1 className="text-2xl font-black text-[#1A202C] mb-2">{error}</h1>
           <p className="text-sm text-[#1A202C]/50">
             {error === 'Electron 전용 기능입니다.'
-              ? '뷰어 모드는 docwise 데스크톱 앱에서만 사용할 수 있습니다.'
+              ? '뷰어 모드는 Noleji View 데스크톱 앱에서만 사용할 수 있습니다.'
               : '파일 경로를 확인하고 다시 시도해주세요.'}
           </p>
         </div>
@@ -415,7 +424,7 @@ export default function ViewerPage() {
       {/* ── Top bar ── */}
       <header className="h-10 flex-shrink-0 border-b border-[#E2E8F0] flex items-center justify-between px-5 bg-white electron-drag electron-titlebar-pad">
         <div className="flex items-center space-x-3 electron-no-drag">
-          <div className="w-6 h-6 rounded-md bg-[#1A202C] flex items-center justify-center text-white font-bold text-[10px]">d</div>
+          <div className="w-6 h-6 rounded-md bg-[#1A202C] flex items-center justify-center text-white font-bold text-[10px]">v</div>
           <span className="text-[12px] font-bold text-[#1A202C] truncate max-w-[400px]">{fileName}</span>
           <span className="text-[9px] font-black text-[#1A202C]/20 uppercase tracking-wider">
             {isHtmlFile ? 'HTML' : 'MARKDOWN'}
@@ -485,7 +494,7 @@ export default function ViewerPage() {
           style={{ width: settings.docWidth, maxWidth: '100%' }}
         >
           <iframe
-            title="docwise-viewer"
+            title="noleji-view-viewer"
             className="w-full h-full border-none"
             style={{ minHeight: '100vh' }}
             srcDoc={srcDoc}
@@ -498,14 +507,14 @@ export default function ViewerPage() {
       {showInstallPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowInstallPrompt(false)}>
           <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()}>
-            <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-[#1A202C] flex items-center justify-center text-white font-bold text-xl">d</div>
+            <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-[#1A202C] flex items-center justify-center text-white font-bold text-xl">v</div>
             <h2 className="text-lg font-black text-[#1A202C] text-center mb-2">데스크톱 앱이 필요합니다</h2>
             <p className="text-sm text-[#1A202C]/60 text-center mb-6">
-              docwise 데스크톱 앱에서 편집할 수 있습니다.
+              Noleji View 데스크톱 앱에서 편집할 수 있습니다.
             </p>
             <div className="space-y-2">
               <a
-                href="https://github.com/noleji-ai/docwise/releases"
+                href="/downloads/Noleji%20View-1.0.0-arm64.dmg"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full py-2.5 rounded-xl bg-[#10B981] text-white text-sm font-bold hover:bg-[#059669] transition-colors text-center block"
@@ -525,3 +534,4 @@ export default function ViewerPage() {
     </div>
   );
 }
+

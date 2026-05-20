@@ -6,11 +6,13 @@ interface ElectronAPI {
   setViewerSettings(settings: import('../shared/viewerSettings').ViewerSettings): Promise<void>;
   onSettingsChanged(callback: (settings: import('../shared/viewerSettings').ViewerSettings) => void): () => void;
   onOpenInEditor(callback: (filePath: string) => void): () => void;
+  notifyEditorRendererReady(): void;
   notifyEditorFileReady(filePath: string): void;
   onEditorOpened(callback: (filePath: string) => void): () => void;
   openInEditor(filePath: string): void;
   saveFile(fileName: string, content: string): Promise<string | null>;
-  openViewer(content: string, fileName: string): void;
+  openViewer(content: string, fileName: string, mode: 'md' | 'html'): void;
+  shareLink(payload: { url: string; title: string; text?: string }): Promise<boolean>;
 }
 
 declare global {

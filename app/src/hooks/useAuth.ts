@@ -1,102 +1,148 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { AuthState, DocwiseUser } from '../types/auth';
-
-const STORAGE_KEY = 'docwise-user';
-
-/**
- * Read the stored user from localStorage.
- */
-function getStoredUser(): DocwiseUser | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as DocwiseUser;
-  } catch {
-    return null;
-  }
-}
+import type { AuthState, DocwiseUser, SupportedAuthProvider } from '../types/auth';
+import { createSessionUser, hydrateSupabaseUser, persistUser, readStoredUser } from '../services/accountStore';
+import { getSupabaseAuthRedirectUrl } from '../config/env';
+import { getSupabaseBrowserClient } from '../lib/supabase';
 
 /**
- * Save or remove the user in localStorage.
- */
-function setStoredUser(user: DocwiseUser | null) {
-  try {
-    if (user) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-    } else {
-      localStorage.removeItem(STORAGE_KEY);
-    }
-  } catch {
-    // localStorage not available
-  }
-}
-
-/**
- * Generate a random uid.
- */
-function generateUid(): string {
-  return `mock-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-/**
- * Mock auth hook (localStorage-based).
- * Will be replaced with Firebase Auth later.
+ * Auth hook with progressive enhancement:
+ * - uses Supabase Auth when env vars are configured
+ * - falls back to local session mocks in offline/dev mode
  */
 export function useAuth() {
   const [authState, setAuthState] = useState<AuthState>({ status: 'loading' });
 
-  // Initialize from localStorage
   useEffect(() => {
-    const user = getStoredUser();
-    if (user) {
+    const supabase = getSupabaseBrowserClient();
+
+    if (!supabase) {
+      const user = readStoredUser();
+      if (user) {
+        setAuthState({ status: 'authenticated', user });
+      } else {
+        setAuthState({ status: 'unauthenticated' });
+      }
+      return;
+    }
+
+    let isMounted = true;
+
+    void supabase.auth.getSession().then(async ({ data, error }) => {
+      if (!isMounted) return;
+
+      if (error || !data.session?.user) {
+        persistUser(null);
+        setAuthState({ status: 'unauthenticated' });
+        return;
+      }
+
+      try {
+        const mappedUser = await hydrateSupabaseUser(supabase, data.session.user);
+        persistUser(mappedUser);
+        setAuthState({ status: 'authenticated', user: mappedUser });
+      } catch {
+        persistUser(null);
+        setAuthState({ status: 'unauthenticated' });
+      }
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMounted) return;
+
+      if (!session?.user) {
+        persistUser(null);
+        setAuthState({ status: 'unauthenticated' });
+        return;
+      }
+
+      void hydrateSupabaseUser(supabase, session.user)
+        .then((mappedUser) => {
+          if (!isMounted) return;
+          persistUser(mappedUser);
+          setAuthState({ status: 'authenticated', user: mappedUser });
+        })
+        .catch(() => {
+          if (!isMounted) return;
+          persistUser(null);
+          setAuthState({ status: 'unauthenticated' });
+        });
+    });
+
+    return () => {
+      isMounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const signIn = useCallback(async (provider: SupportedAuthProvider) => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      const user = createSessionUser(provider);
+      persistUser(user);
       setAuthState({ status: 'authenticated', user });
-    } else {
-      setAuthState({ status: 'unauthenticated' });
+      return;
     }
-  }, []);
 
-  const signIn = useCallback((provider: 'google' | 'github' | 'email' | 'anonymous') => {
-    const providerNames: Record<string, string> = {
-      google: 'Google User',
-      github: 'GitHub User',
-      email: 'Email User',
-      anonymous: 'Anonymous',
-    };
-
-    const providerEmails: Record<string, string> = {
-      google: 'user@gmail.com',
-      github: 'user@github.com',
-      email: 'user@docwise.app',
-      anonymous: '',
-    };
-
-    const user: DocwiseUser = {
-      uid: generateUid(),
-      email: providerEmails[provider] || null,
-      displayName: providerNames[provider] || 'User',
-      photoURL: null,
+    const { error } = await supabase.auth.signInWithOAuth({
       provider,
-      plan: 'free',
-      createdAt: new Date().toISOString(),
-    };
+      options: {
+        redirectTo: getSupabaseAuthRedirectUrl(),
+      },
+    });
 
-    setStoredUser(user);
-    // Also set the plan key for featureGate
-    try {
-      localStorage.setItem('docwise-user-plan', user.plan);
-    } catch {
-      // ignore
+    if (error) {
+      throw error;
     }
-    setAuthState({ status: 'authenticated', user });
   }, []);
 
-  const signOut = useCallback(() => {
-    setStoredUser(null);
-    try {
-      localStorage.removeItem('docwise-user-plan');
-    } catch {
-      // ignore
+  const signInWithEmail = useCallback(async (
+    email: string,
+    password: string,
+    mode: 'signin' | 'signup' = 'signin',
+  ) => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      throw new Error('Supabase 인증 환경변수가 설정되지 않아 이메일 로그인을 사용할 수 없습니다.');
     }
+
+    if (mode === 'signup') {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: getSupabaseAuthRedirectUrl(),
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      return {
+        requiresConfirmation: !data.session,
+      };
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return {
+      requiresConfirmation: false,
+    };
+  }, []);
+
+  const signOut = useCallback(async () => {
+    const supabase = getSupabaseBrowserClient();
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
+    persistUser(null);
     setAuthState({ status: 'unauthenticated' });
   }, []);
 
@@ -107,5 +153,5 @@ export function useAuth() {
     return null;
   }, [authState]);
 
-  return { authState, signIn, signOut, getCurrentUser };
+  return { authState, signIn, signInWithEmail, signOut, getCurrentUser };
 }

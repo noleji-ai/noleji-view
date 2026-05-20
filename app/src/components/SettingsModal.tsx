@@ -1,15 +1,15 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Check, AlertCircle, Wifi, WifiOff, ChevronDown, UserCircle, LogOut, Crown, Sun, Moon } from 'lucide-react';
-import type { LLMConfig, LLMProvider } from '../types/llm';
-import { DEFAULT_LLM_CONFIGS } from '../types/llm';
+import { X, Check, AlertCircle, Wifi, WifiOff, UserCircle, LogOut, Crown, Sun, Moon } from 'lucide-react';
+import type { LLMAccessMode, LLMConfig, LLMProvider } from '../types/llm';
+import { DEFAULT_LLM_CONFIGS, PROVIDER_MODELS } from '../types/llm';
 import type { AuthState } from '../types/auth';
 import { PRICING_PLANS } from '../data/pricingPlans';
 import type { ViewerSettings } from '../shared/viewerSettings';
 import { DEFAULT_VIEWER_SETTINGS } from '../shared/viewerSettings';
 import { loadViewerSettings, saveViewerSettings } from '../shared/settingsStore';
 import { DESIGN_TEMPLATES } from '../data/designTemplates';
-import { getGithubToken, setGithubToken, removeGithubToken } from '../services/gistStorage';
+import { canUseManagedAI } from '../utils/featureGate';
 
 /* ── Tab 정의 ── */
 type SettingsTab = 'general' | 'share' | 'llm' | 'auth' | 'viewer';
@@ -22,12 +22,12 @@ const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'viewer', label: '뷰어' },
 ];
 
-/* ── Provider 옵션 ── */
-const PROVIDER_OPTIONS: { value: LLMProvider; label: string; description: string }[] = [
-  { value: 'openai', label: 'ChatGPT (OpenAI)', description: 'GPT-4o, GPT-4 Turbo' },
-  { value: 'anthropic', label: 'Claude (Anthropic)', description: 'Claude Sonnet, Opus, Haiku' },
-  { value: 'google', label: 'Gemini (Google)', description: 'Gemini 2.0 Flash, Pro' },
-  { value: 'lmstudio', label: 'LM Studio (Local)', description: '로컬 모델 서버' },
+const BRAND_NAME = 'Noleji View';
+const DOC_WIDTH_OPTIONS: ViewerSettings['docWidth'][] = ['640px', '800px', '1000px', '1200px', '100%'];
+
+const ACCESS_MODE_OPTIONS: { value: LLMAccessMode; label: string; description: string }[] = [
+  { value: 'managed', label: 'Noleji View AI', description: '유료 구독으로 별도 키 입력 없이 관리형 AI를 사용합니다.' },
+  { value: 'local', label: 'Local LM Studio', description: '무료로 로컬 모델 서버를 직접 연결합니다.' },
 ];
 
 /* ── Props ── */
@@ -41,6 +41,7 @@ interface SettingsModalProps {
   onTestConnection: () => Promise<boolean>;
   authState: AuthState;
   onSignIn: (provider: 'google' | 'github') => void;
+  onEmailAuth: (email: string, password: string, mode: 'signin' | 'signup') => Promise<{ requiresConfirmation: boolean }>;
   onSignOut: () => void;
 }
 
@@ -54,13 +55,14 @@ export default function SettingsModal({
   onTestConnection,
   authState,
   onSignIn,
+  onEmailAuth,
   onSignOut,
 }: SettingsModalProps) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'failure' | null>(null);
-  const [showAdvancedUrl, setShowAdvancedUrl] = useState(false);
+  const managedAIEnabled = authState.status === 'authenticated' ? authState.user.entitlements.managedAI : canUseManagedAI();
 
   /* Close on Escape */
   React.useEffect(() => {
@@ -89,19 +91,31 @@ export default function SettingsModal({
       const defaults = DEFAULT_LLM_CONFIGS[provider];
       setLLMConfig({
         ...llmConfig,
+        accessMode: provider === 'lmstudio' ? 'local' : 'managed',
         provider,
         model: (defaults.model as string) ?? llmConfig.model,
         baseUrl: (defaults.baseUrl as string) ?? llmConfig.baseUrl,
         temperature: defaults.temperature ?? llmConfig.temperature,
         maxTokens: defaults.maxTokens ?? llmConfig.maxTokens,
-        apiKey: provider === 'lmstudio' ? '' : llmConfig.apiKey,
+        apiKey: '',
         isConnected: false,
       });
       setTestResult(null);
-      setShowAdvancedUrl(provider === 'lmstudio');
     },
     [llmConfig, setLLMConfig],
   );
+
+  const handleAccessModeChange = useCallback((mode: LLMAccessMode) => {
+    if (mode === 'managed') {
+      handleProviderChange('docwise');
+      return;
+    }
+    if (mode === 'local') {
+      handleProviderChange('lmstudio');
+      return;
+    }
+    handleProviderChange('docwise');
+  }, [handleProviderChange]);
 
   const handleTestConnection = useCallback(async () => {
     setIsTesting(true);
@@ -127,7 +141,7 @@ export default function SettingsModal({
         <header className="flex items-center justify-between px-8 pt-7 pb-0">
           <div>
             <h2 className="text-xl font-black tracking-tight text-[#1A202C]">Settings</h2>
-            <p className="text-[8px] font-black text-[#1A202C]/25 uppercase tracking-[0.25em] mt-0.5">docwise preferences</p>
+            <p className="text-[8px] font-black text-[#1A202C]/25 uppercase tracking-[0.25em] mt-0.5">{BRAND_NAME} preferences</p>
           </div>
           <button
             onClick={onClose}
@@ -166,16 +180,15 @@ export default function SettingsModal({
             <LLMTab
               config={llmConfig}
               updateConfig={updateConfig}
-              onProviderChange={handleProviderChange}
+              onAccessModeChange={handleAccessModeChange}
               onTestConnection={handleTestConnection}
               isTesting={isTesting}
               testResult={testResult}
-              showAdvancedUrl={showAdvancedUrl}
-              setShowAdvancedUrl={setShowAdvancedUrl}
+              managedAIEnabled={managedAIEnabled}
             />
           )}
           {activeTab === 'auth' && (
-            <AuthTab authState={authState} onSignIn={onSignIn} onSignOut={onSignOut} onClose={onClose} onNavigate={(path) => { onClose(); navigate(path); }} />
+            <AuthTab authState={authState} onSignIn={onSignIn} onEmailAuth={onEmailAuth} onSignOut={onSignOut} onClose={onClose} onNavigate={(path) => { onClose(); navigate(path); }} />
           )}
           {activeTab === 'viewer' && <ViewerTab />}
         </div>
@@ -188,51 +201,82 @@ export default function SettingsModal({
 /*                  General Tab                   */
 /* ══════════════════════════════════════════════ */
 function GeneralTab() {
-  const [defaultFileType, setDefaultFileType] = useState<'md' | 'html'>('md');
-
   return (
     <div className="space-y-6">
-      {/* Version */}
-      <Section label="App Version">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-[#1A202C] flex items-center justify-center text-white font-black text-lg shadow-lg shadow-black/10">
-            d
-          </div>
-          <div>
-            <p className="text-sm font-black text-[#1A202C]">docwise v3.5</p>
-            <p className="text-[10px] font-bold text-[#1A202C]/30">Markdown Knowledge Engine</p>
+      <Section label="Welcome">
+        <div className="rounded-[24px] border border-[#E2E8F0] bg-[linear-gradient(135deg,#1A202C_0%,#0F172A_55%,#10B981_160%)] p-5 text-white shadow-xl shadow-[#1A202C]/10">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-white/55">Open Design setup guide</p>
+              <h3 className="mt-2 text-lg font-black tracking-tight">처음 설치한 뒤 바로 보기 좋게 시작하는 순서</h3>
+              <p className="mt-2 text-[12px] leading-relaxed text-white/70">
+                {BRAND_NAME}는 로컬 우선 마크다운 워크스페이스입니다. 아래 3단계만 끝내면
+                .md / .html 문서를 더블클릭으로 열고, 동일한 뷰 스타일로 미리보기와 뷰어를 함께 사용할 수 있습니다.
+              </p>
+            </div>
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-xl font-black">v</div>
           </div>
         </div>
       </Section>
 
-      {/* Default file type */}
-      <Section label="Default File Type">
-        <div className="flex bg-[#F7FAFC] p-1 rounded-xl border border-[#E2E8F0] w-fit">
-          <button
-            onClick={() => setDefaultFileType('md')}
-            className={`px-4 py-2 text-[11px] font-black rounded-lg transition-all ${
-              defaultFileType === 'md'
-                ? 'bg-white shadow-sm text-[#10B981] border border-[#E2E8F0]'
-                : 'text-[#1A202C]/30'
-            }`}
-          >
-            Markdown (.md)
-          </button>
-          <button
-            onClick={() => setDefaultFileType('html')}
-            className={`px-4 py-2 text-[11px] font-black rounded-lg transition-all ${
-              defaultFileType === 'html'
-                ? 'bg-white shadow-sm text-amber-500 border border-[#E2E8F0]'
-                : 'text-[#1A202C]/30'
-            }`}
-          >
-            HTML (.html)
-          </button>
+      <Section label="First-launch checklist">
+        <div className="grid gap-3 md:grid-cols-3">
+          {[
+            {
+              step: '01',
+              title: '앱 설치 확인',
+              desc: '/Applications 폴더에 Noleji View.app 이 있는지 먼저 확인하세요. 목록에 안 보이면 Finder에서 앱을 한 번 직접 실행해 두면 선택이 쉬워집니다.',
+            },
+            {
+              step: '02',
+              title: '기본 앱 연결',
+              desc: 'Finder에서 .md 파일 하나를 선택한 뒤 정보 가져오기 → 다음으로 열기 → Noleji View → 모두 변경 순서로 설정하세요.',
+            },
+            {
+              step: '03',
+              title: '뷰 스타일 맞추기',
+              desc: '설정 > 뷰어에서 템플릿, 폭, 여백, 다크 모드를 정하면 편집 화면과 별도 뷰어가 같은 기준으로 맞춰집니다.',
+            },
+          ].map((item) => (
+            <div key={item.step} className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
+              <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[#10B981]">Step {item.step}</div>
+              <h3 className="mt-2 text-sm font-black text-[#1A202C]">{item.title}</h3>
+              <p className="mt-2 text-[12px] leading-relaxed text-[#1A202C]/55">{item.desc}</p>
+            </div>
+          ))}
         </div>
       </Section>
 
-      {/* Theme */}
-      <Section label="Theme">
+      <Section label="macOS default app guide">
+        <div className="rounded-2xl border border-[#E2E8F0] bg-[#F7FAFC] p-5">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-2xl border border-[#E2E8F0] bg-white p-4">
+              <p className="text-[11px] font-black text-[#1A202C]">Markdown (.md)</p>
+              <ol className="mt-3 space-y-2 text-[12px] leading-relaxed text-[#1A202C]/60 list-decimal pl-4">
+                <li>Finder에서 아무 .md 파일이나 하나 선택합니다.</li>
+                <li>마우스 오른쪽 버튼 → 정보 가져오기 를 엽니다.</li>
+                <li>다음으로 열기 항목에서 Noleji View를 선택합니다.</li>
+                <li>모두 변경...을 눌러 모든 Markdown 파일에 적용합니다.</li>
+              </ol>
+            </div>
+            <div className="rounded-2xl border border-[#E2E8F0] bg-white p-4">
+              <p className="text-[11px] font-black text-[#1A202C]">HTML (.html / .htm)</p>
+              <ol className="mt-3 space-y-2 text-[12px] leading-relaxed text-[#1A202C]/60 list-decimal pl-4">
+                <li>.html 또는 .htm 파일 하나를 선택합니다.</li>
+                <li>정보 가져오기에서 다음으로 열기를 펼칩니다.</li>
+                <li>Noleji View를 선택한 뒤 모두 변경...을 누릅니다.</li>
+                <li>이후에는 더블클릭만으로 같은 뷰어에서 열 수 있습니다.</li>
+              </ol>
+            </div>
+          </div>
+          <div className="mt-4 rounded-2xl border border-[#10B981]/15 bg-[#ECFDF5] px-4 py-3 text-[12px] leading-relaxed text-[#065F46]">
+            팁: 앱 목록에 Noleji View가 보이지 않으면 /Applications/Noleji View.app 을 먼저 실행하거나,
+            정보 가져오기 창에서 직접 앱을 선택해 주세요.
+          </div>
+        </div>
+      </Section>
+
+      <Section label="Current theme">
         <div className="flex items-center space-x-2.5 p-3 rounded-xl border border-[#E2E8F0] bg-[#F7FAFC]/30 w-fit">
           <div className="flex space-x-1">
             <div className="w-4 h-4 rounded-full bg-[#1A202C]" />
@@ -287,21 +331,21 @@ function ShareTab({
         {shareMode === 'internal' ? (
           <div className="space-y-2">
             <p className="text-[12px] font-bold text-[#1A202C]/70">
-              공유용 HTML 파일을 다운로드합니다. 내부 서버에 업로드하여 공유하세요.
+              링크를 클립보드에 복사하고, 지원 환경에서는 시스템 공유 시트로 바로 전달합니다.
             </p>
             <div className="flex items-center space-x-2 text-[10px] font-bold text-[#1A202C]/30">
               <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-              <span>파일 다운로드 방식 &mdash; 오프라인 접근 가능</span>
+              <span>복사 + 시스템 공유 방식 &mdash; HTML 다운로드는 보조 내보내기로 분리 예정</span>
             </div>
           </div>
         ) : (
           <div className="space-y-2">
             <p className="text-[12px] font-bold text-[#1A202C]/70">
-              새 탭에서 미리보기를 열고 URL을 공유합니다.
+              기본 동작은 링크 복사입니다. 지원되는 플랫폼에서는 바로 시스템 공유 메뉴도 함께 사용할 수 있습니다.
             </p>
             <div className="flex items-center space-x-2 text-[10px] font-bold text-[#1A202C]/30">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-              <span>URL 공유 방식 &mdash; 인터넷 연결 필요</span>
+              <span>유료 플랜은 계정 기반 링크, 무료 플랜은 로컬 링크를 우선 사용합니다.</span>
             </div>
           </div>
         )}
@@ -316,21 +360,19 @@ function ShareTab({
 function LLMTab({
   config,
   updateConfig,
-  onProviderChange,
+  onAccessModeChange,
   onTestConnection,
   isTesting,
   testResult,
-  showAdvancedUrl,
-  setShowAdvancedUrl,
+  managedAIEnabled,
 }: {
   config: LLMConfig;
   updateConfig: (patch: Partial<LLMConfig>) => void;
-  onProviderChange: (provider: LLMProvider) => void;
+  onAccessModeChange: (mode: LLMAccessMode) => void;
   onTestConnection: () => void;
   isTesting: boolean;
   testResult: 'success' | 'failure' | null;
-  showAdvancedUrl: boolean;
-  setShowAdvancedUrl: (v: boolean) => void;
+  managedAIEnabled: boolean;
 }) {
   return (
     <div className="space-y-5">
@@ -364,56 +406,71 @@ function LLMTab({
         )}
       </div>
 
-      {/* Provider */}
-      <Section label="Provider">
-        <div className="relative">
-          <select
-            value={config.provider}
-            onChange={(e) => onProviderChange(e.target.value as LLMProvider)}
-            className="w-full appearance-none bg-white border border-[#E2E8F0] rounded-xl px-4 py-2.5 text-[12px] font-bold text-[#1A202C] focus:outline-none focus:border-[#10B981] focus:ring-1 focus:ring-[#10B981]/20 transition-all cursor-pointer pr-10"
-          >
-            {PROVIDER_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          <ChevronDown
-            size={14}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#1A202C]/25 pointer-events-none"
-          />
+      <Section label="접속 방식">
+        <div className="grid grid-cols-1 gap-2.5">
+          {ACCESS_MODE_OPTIONS.map((option) => {
+            const disabled = option.value === 'managed' && !managedAIEnabled;
+
+            return (
+              <button
+                key={option.value}
+                onClick={() => !disabled && onAccessModeChange(option.value)}
+                disabled={disabled}
+                className={`rounded-xl border px-4 py-3 text-left transition-all ${
+                  config.accessMode === option.value
+                    ? 'border-[#10B981] bg-[#10B981]/5'
+                    : 'border-[#E2E8F0] bg-white'
+                } ${disabled ? 'cursor-not-allowed opacity-45' : 'hover:border-[#10B981]/40'}`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] font-black text-[#1A202C]">{option.label}</span>
+                  {disabled && <span className="text-[9px] font-black uppercase tracking-wider text-[#1A202C]/25">업그레이드 필요</span>}
+                </div>
+                <p className="mt-1 text-[10px] font-medium text-[#1A202C]/45">{option.description}</p>
+              </button>
+            );
+          })}
         </div>
-        <p className="text-[10px] font-bold text-[#1A202C]/25 mt-1.5">
-          {PROVIDER_OPTIONS.find((o) => o.value === config.provider)?.description}
-        </p>
       </Section>
 
-      {/* API Key (hidden for lmstudio) */}
-      {config.provider !== 'lmstudio' && (
-        <Section label="API Key">
-          <input
-            type="password"
-            value={config.apiKey}
-            onChange={(e) => updateConfig({ apiKey: e.target.value })}
-            placeholder={`Enter ${config.provider} API key...`}
-            className="w-full bg-white border border-[#E2E8F0] rounded-xl px-4 py-2.5 text-[12px] font-mono text-[#1A202C] placeholder-[#1A202C]/15 focus:outline-none focus:border-[#10B981] focus:ring-1 focus:ring-[#10B981]/20 transition-all"
-          />
+      {config.accessMode === 'managed' && (
+        <Section label="Noleji View AI 상태">
+          <div className="rounded-xl border border-[#E2E8F0] bg-[#F7FAFC]/30 p-4">
+            <p className="text-[12px] font-bold text-[#1A202C]/70">
+              {BRAND_NAME} 계정과 요금제 기반으로 서버 제공 AI를 사용합니다.
+            </p>
+            <p className="mt-1 text-[10px] font-medium text-[#1A202C]/35">
+              백엔드가 연결되면 별도 모델 키 입력 없이 바로 사용할 수 있습니다.
+            </p>
+          </div>
         </Section>
       )}
 
       {/* Model */}
       <Section label="Model">
-        <input
-          type="text"
-          value={config.model}
-          onChange={(e) => updateConfig({ model: e.target.value })}
-          placeholder="Model name..."
-          className="w-full bg-white border border-[#E2E8F0] rounded-xl px-4 py-2.5 text-[12px] font-bold text-[#1A202C] placeholder-[#1A202C]/15 focus:outline-none focus:border-[#10B981] focus:ring-1 focus:ring-[#10B981]/20 transition-all"
-        />
+        {config.accessMode === 'managed' ? (
+          <select
+            value={config.model}
+            onChange={(e) => updateConfig({ model: e.target.value })}
+            className="w-full appearance-none bg-white border border-[#E2E8F0] rounded-xl px-4 py-2.5 text-[12px] font-bold text-[#1A202C] focus:outline-none focus:border-[#10B981] focus:ring-1 focus:ring-[#10B981]/20 transition-all cursor-pointer"
+          >
+            {PROVIDER_MODELS.docwise.map((model) => (
+              <option key={model} value={model}>{model}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type="text"
+            value={config.model}
+            onChange={(e) => updateConfig({ model: e.target.value })}
+            placeholder="Model name..."
+            className="w-full bg-white border border-[#E2E8F0] rounded-xl px-4 py-2.5 text-[12px] font-bold text-[#1A202C] placeholder-[#1A202C]/15 focus:outline-none focus:border-[#10B981] focus:ring-1 focus:ring-[#10B981]/20 transition-all"
+          />
+        )}
       </Section>
 
       {/* Base URL */}
-      {config.provider === 'lmstudio' ? (
+      {config.accessMode === 'local' && (
         <Section label="Base URL">
           <input
             type="text"
@@ -423,28 +480,21 @@ function LLMTab({
             className="w-full bg-white border border-[#E2E8F0] rounded-xl px-4 py-2.5 text-[12px] font-mono text-[#1A202C] placeholder-[#1A202C]/15 focus:outline-none focus:border-[#10B981] focus:ring-1 focus:ring-[#10B981]/20 transition-all"
           />
         </Section>
-      ) : (
-        <div>
-          <button
-            onClick={() => setShowAdvancedUrl(!showAdvancedUrl)}
-            className="text-[9px] font-black text-[#1A202C]/25 uppercase tracking-widest hover:text-[#10B981] transition-colors flex items-center space-x-1"
-          >
-            <ChevronDown
-              size={10}
-              className={`transition-transform ${showAdvancedUrl ? 'rotate-180' : ''}`}
-            />
-            <span>Advanced: Base URL</span>
-          </button>
-          {showAdvancedUrl && (
-            <input
-              type="text"
-              value={config.baseUrl}
-              onChange={(e) => updateConfig({ baseUrl: e.target.value })}
-              className="w-full mt-2 bg-white border border-[#E2E8F0] rounded-xl px-4 py-2.5 text-[12px] font-mono text-[#1A202C] placeholder-[#1A202C]/15 focus:outline-none focus:border-[#10B981] focus:ring-1 focus:ring-[#10B981]/20 transition-all"
-            />
-          )}
-        </div>
       )}
+
+      {/* Provider */}
+      <Section label="Provider">
+        <div className="relative">
+          <div className="rounded-xl border border-[#E2E8F0] bg-[#F7FAFC]/30 px-4 py-2.5 text-[12px] font-bold text-[#1A202C]">
+            {config.accessMode === 'managed' ? 'Noleji View Managed AI' : 'LM Studio (Local)'}
+          </div>
+        </div>
+        <p className="text-[10px] font-bold text-[#1A202C]/25 mt-1.5">
+          {config.accessMode === 'managed'
+            ? '로그인 사용자에게 서버가 모델 라우팅과 과금을 대신 처리합니다.'
+            : '로컬 서버를 직접 연결합니다.'}
+        </p>
+      </Section>
 
       {/* Temperature */}
       <Section label={`Temperature: ${config.temperature.toFixed(1)}`}>
@@ -490,15 +540,15 @@ function LLMTab({
         ) : testResult === 'success' ? (
           <>
             <Check size={14} />
-            <span>연결 테스트 완료</span>
+            <span>{config.accessMode === 'managed' ? '서비스 연결 확인 완료' : '연결 테스트 완료'}</span>
           </>
         ) : testResult === 'failure' ? (
           <>
             <AlertCircle size={14} />
-            <span>재시도: 연결 테스트</span>
+            <span>{config.accessMode === 'managed' ? '재시도: 서비스 연결 확인' : '재시도: 연결 테스트'}</span>
           </>
         ) : (
-          <span>연결 테스트</span>
+          <span>{config.accessMode === 'managed' ? '서비스 연결 확인' : '연결 테스트'}</span>
         )}
       </button>
     </div>
@@ -511,15 +561,24 @@ function LLMTab({
 function AuthTab({
   authState,
   onSignIn,
+  onEmailAuth,
   onSignOut,
   onNavigate,
 }: {
   authState: AuthState;
   onSignIn: (provider: 'google' | 'github') => void;
+  onEmailAuth: (email: string, password: string, mode: 'signin' | 'signup') => Promise<{ requiresConfirmation: boolean }>;
   onSignOut: () => void;
   onClose?: () => void;
   onNavigate?: (path: string) => void;
 }) {
+  const [emailMode, setEmailMode] = useState<'signin' | 'signup'>('signin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [authMessage, setAuthMessage] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isSubmittingEmail, setIsSubmittingEmail] = useState(false);
   if (authState.status === 'loading') {
     return (
       <div className="flex items-center justify-center py-12">
@@ -528,14 +587,140 @@ function AuthTab({
     );
   }
 
+  const handleEmailAuth = async () => {
+    setAuthMessage(null);
+    setAuthError(null);
+
+    if (!email.trim() || !password.trim()) {
+      setAuthError('이메일과 비밀번호를 모두 입력해주세요.');
+      return;
+    }
+
+    if (emailMode === 'signup' && password !== confirmPassword) {
+      setAuthError('비밀번호 확인 값이 일치하지 않습니다.');
+      return;
+    }
+
+    setIsSubmittingEmail(true);
+    try {
+      const result = await onEmailAuth(email.trim(), password, emailMode);
+      setAuthMessage(
+        emailMode === 'signup'
+          ? result.requiresConfirmation
+            ? '회원가입이 접수되었습니다. Supabase 이메일 확인 후 로그인해주세요.'
+            : '회원가입과 로그인에 성공했습니다.'
+          : '로그인에 성공했습니다.',
+      );
+      if (emailMode === 'signup' && result.requiresConfirmation) {
+        setPassword('');
+        setConfirmPassword('');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '이메일 인증 중 오류가 발생했습니다.';
+      setAuthError(message);
+    } finally {
+      setIsSubmittingEmail(false);
+    }
+  };
+
   if (authState.status === 'unauthenticated') {
     return (
       <div className="space-y-6">
         <Section label="로그인">
           <p className="text-[12px] font-medium text-[#1A202C]/50 mb-4">
-            로그인하면 설정과 파일이 클라우드에 동기화됩니다.
+            로그인하면 이 기기의 문서 작업본과 최근 세션이 계정 작업공간에 동기화됩니다.
           </p>
+
+          <div className="rounded-2xl border border-[#E2E8F0] bg-[#F7FAFC] p-4 space-y-3">
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setEmailMode('signin');
+                  setAuthMessage(null);
+                  setAuthError(null);
+                }}
+                className={`flex-1 rounded-xl px-3 py-2 text-[11px] font-black transition-all ${
+                  emailMode === 'signin'
+                    ? 'bg-white text-[#10B981] border border-[#10B981]/20 shadow-sm'
+                    : 'bg-transparent text-[#1A202C]/45 border border-transparent'
+                }`}
+              >
+                이메일 로그인
+              </button>
+              <button
+                onClick={() => {
+                  setEmailMode('signup');
+                  setAuthMessage(null);
+                  setAuthError(null);
+                }}
+                className={`flex-1 rounded-xl px-3 py-2 text-[11px] font-black transition-all ${
+                  emailMode === 'signup'
+                    ? 'bg-white text-[#10B981] border border-[#10B981]/20 shadow-sm'
+                    : 'bg-transparent text-[#1A202C]/45 border border-transparent'
+                }`}
+              >
+                이메일 회원가입
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <input
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                type="email"
+                autoComplete="email"
+                placeholder="you@example.com"
+                className="w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-[12px] font-medium text-[#1A202C] placeholder:text-[#1A202C]/25 focus:border-[#10B981] focus:outline-none focus:ring-1 focus:ring-[#10B981]/20"
+              />
+              <input
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                type="password"
+                autoComplete={emailMode === 'signup' ? 'new-password' : 'current-password'}
+                placeholder="비밀번호"
+                className="w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-[12px] font-medium text-[#1A202C] placeholder:text-[#1A202C]/25 focus:border-[#10B981] focus:outline-none focus:ring-1 focus:ring-[#10B981]/20"
+              />
+              {emailMode === 'signup' && (
+                <input
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="비밀번호 확인"
+                  className="w-full rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-[12px] font-medium text-[#1A202C] placeholder:text-[#1A202C]/25 focus:border-[#10B981] focus:outline-none focus:ring-1 focus:ring-[#10B981]/20"
+                />
+              )}
+            </div>
+
+            {authMessage && (
+              <p className="rounded-xl border border-[#10B981]/15 bg-[#ECFDF5] px-3 py-2 text-[11px] font-bold text-[#059669]">
+                {authMessage}
+              </p>
+            )}
+            {authError && (
+              <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-bold text-red-500">
+                {authError}
+              </p>
+            )}
+
+            <button
+              onClick={() => void handleEmailAuth()}
+              disabled={isSubmittingEmail}
+              className="w-full rounded-xl bg-[#10B981] px-4 py-3 text-[12px] font-black text-white transition-all hover:bg-[#0ea371] disabled:cursor-not-allowed disabled:bg-[#10B981]/50"
+            >
+              {isSubmittingEmail
+                ? '처리 중...'
+                : emailMode === 'signup'
+                  ? '이메일로 회원가입'
+                  : '이메일로 로그인'}
+            </button>
+            <p className="text-[10px] font-bold text-[#1A202C]/30">
+              Supabase URL/Anon Key가 설정된 환경에서 실제 계정 로그인이 동작합니다.
+            </p>
+          </div>
+
           <div className="space-y-2.5">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#1A202C]/25">OAuth</p>
             <button
               onClick={() => onSignIn('google')}
               className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl border border-[#E2E8F0] bg-white hover:bg-[#F7FAFC] hover:border-[#10B981]/40 transition-all text-[12px] font-bold text-[#1A202C]"
@@ -550,6 +735,9 @@ function AuthTab({
               <UserCircle size={18} className="text-[#1A202C]/50" />
               <span>GitHub 계정으로 로그인</span>
             </button>
+            <p className="text-[10px] font-bold text-[#1A202C]/30">
+              참고: 현재 Electron 환경에서는 OAuth redirect 구성이 추가로 필요하므로, 즉시 검증은 이메일 로그인 경로를 우선 사용하세요.
+            </p>
           </div>
         </Section>
       </div>
@@ -606,12 +794,27 @@ function AuthTab({
         </div>
       </Section>
 
-      {/* GitHub Token for Permanent Links */}
-      <Section label="영구 링크 설정">
-        <p className="text-[10px] font-medium text-[#1A202C]/40 mb-3">
-          유료 사용자는 GitHub Gist를 통해 만료되지 않는 영구 링크를 생성할 수 있습니다.
-        </p>
-        <GitHubTokenInput />
+      <Section label="동기화 상태">
+        <div className="rounded-xl border border-[#E2E8F0] bg-[#F7FAFC]/30 p-4 space-y-2">
+          <div className="flex items-center justify-between text-[11px] font-bold">
+            <span className="text-[#1A202C]/45">클라우드 백업</span>
+            <span className={user.entitlements.cloudSync ? 'text-[#10B981]' : 'text-[#1A202C]/25'}>
+              {user.entitlements.cloudSync ? '사용 가능' : '비활성'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-[11px] font-bold">
+            <span className="text-[#1A202C]/45">공유 링크</span>
+            <span className={user.entitlements.linkSharing ? 'text-[#10B981]' : 'text-[#1A202C]/25'}>
+              {user.entitlements.linkSharing ? '계정 링크 공유 가능' : '유료 플랜 필요'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-[11px] font-bold">
+            <span className="text-[#1A202C]/45">마지막 동기화</span>
+            <span className="text-[#1A202C]/60">
+              {user.lastSyncedAt ? new Date(user.lastSyncedAt).toLocaleString('ko-KR') : '아직 없음'}
+            </span>
+          </div>
+        </div>
       </Section>
 
       {/* Sign Out */}
@@ -622,65 +825,6 @@ function AuthTab({
         <LogOut size={14} />
         <span>로그아웃</span>
       </button>
-    </div>
-  );
-}
-
-function GitHubTokenInput() {
-  const [token, setToken] = useState(getGithubToken() ?? '');
-  const [saved, setSaved] = useState(!!getGithubToken());
-  const [showToken, setShowToken] = useState(false);
-
-  const handleSave = () => {
-    if (token.trim()) {
-      setGithubToken(token.trim());
-      setSaved(true);
-    }
-  };
-
-  const handleRemove = () => {
-    removeGithubToken();
-    setToken('');
-    setSaved(false);
-  };
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center space-x-2">
-        <input
-          type={showToken ? 'text' : 'password'}
-          value={token}
-          onChange={(e) => { setToken(e.target.value); setSaved(false); }}
-          placeholder="ghp_xxxxxxxxxxxx"
-          className="flex-1 px-3 py-2 rounded-lg border border-[#E2E8F0] bg-white text-[11px] font-mono text-[#1A202C] placeholder-[#1A202C]/20 focus:outline-none focus:border-[#10B981]"
-        />
-        <button
-          onClick={() => setShowToken(!showToken)}
-          className="px-2 py-2 rounded-lg border border-[#E2E8F0] text-[9px] font-bold text-[#1A202C]/40 hover:text-[#1A202C] transition-all"
-        >
-          {showToken ? '숨기기' : '보기'}
-        </button>
-      </div>
-      <div className="flex items-center space-x-2">
-        <button
-          onClick={handleSave}
-          disabled={!token.trim() || saved}
-          className="px-3 py-1.5 rounded-lg bg-[#10B981] text-white text-[10px] font-bold disabled:opacity-30 disabled:cursor-default hover:bg-[#059669] transition-all"
-        >
-          {saved ? '저장됨' : '저장'}
-        </button>
-        {saved && (
-          <button
-            onClick={handleRemove}
-            className="px-3 py-1.5 rounded-lg border border-red-200 text-red-500 text-[10px] font-bold hover:bg-red-50 transition-all"
-          >
-            삭제
-          </button>
-        )}
-      </div>
-      <p className="text-[9px] text-[#1A202C]/25">
-        GitHub Personal Access Token (gist 권한 필요) · <a href="https://github.com/settings/tokens/new?scopes=gist&description=docwise" target="_blank" rel="noopener noreferrer" className="text-[#10B981] hover:underline">토큰 생성하기</a>
-      </p>
     </div>
   );
 }
@@ -795,8 +939,8 @@ function ViewerTab() {
 
       {/* Document width */}
       <Section label="문서 너비">
-        <div className="grid grid-cols-4 gap-1.5">
-          {['640px', '800px', '1200px', '100%'].map((w) => (
+        <div className="grid grid-cols-5 gap-1.5">
+          {DOC_WIDTH_OPTIONS.map((w) => (
             <button
               key={w}
               onClick={() => update({ docWidth: w })}
