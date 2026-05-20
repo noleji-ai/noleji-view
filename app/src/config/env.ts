@@ -35,6 +35,15 @@ function normalizeBasePath(baseUrl: string): string {
 }
 
 export function getAppBasePath(): string {
+  if (typeof window !== 'undefined' && !window.electronAPI) {
+    const pathname = window.location.pathname;
+    const runtimeCandidates = ['/apps/noleji-view', '/docwise'];
+    const matched = runtimeCandidates.find((candidate) => pathname === candidate || pathname.startsWith(`${candidate}/`));
+    if (matched) {
+      return matched;
+    }
+  }
+
   return normalizeBasePath(import.meta.env.BASE_URL ?? '/');
 }
 

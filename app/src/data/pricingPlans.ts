@@ -7,6 +7,7 @@ export const PRICING_PLANS: PricingPlan[] = [
     nameEn: 'Free',
     price: '₩0',
     priceNote: '영원히 무료',
+    priceNoteEn: 'Free forever',
     features: [
       '마크다운 편집 + 실시간 미리보기',
       '로컬 자동저장 + 최근 문서 복원',
@@ -14,6 +15,14 @@ export const PRICING_PLANS: PricingPlan[] = [
       '3개 폴더, 폴더당 10개 파일',
       '2종 디자인 템플릿',
       '프리미엄 기능 하루 10회 체험',
+    ],
+    featuresEn: [
+      'Markdown editor with live preview',
+      'Local autosave and recent document recovery',
+      'Personal cloud backup after sign-in',
+      '3 folders and 10 files per folder',
+      '2 design templates',
+      '10 premium actions per day for evaluation',
     ],
     limits: {
       maxFolders: 3,
@@ -25,6 +34,7 @@ export const PRICING_PLANS: PricingPlan[] = [
       linkSharing: false,
     },
     cta: '무료로 시작하기',
+    ctaEn: 'Start free',
     highlighted: false,
   },
   {
@@ -33,6 +43,7 @@ export const PRICING_PLANS: PricingPlan[] = [
     nameEn: 'Monthly',
     price: '₩4,900',
     priceNote: '매월 결제 · 기존 대비 약 50% 인하',
+    priceNoteEn: 'Billed monthly · about 50% lower than the previous plan',
     features: [
       '무료 플랜의 모든 기능',
       '무제한 폴더 & 파일',
@@ -40,6 +51,14 @@ export const PRICING_PLANS: PricingPlan[] = [
       'PDF/HTML 내보내기 무제한',
       'Noleji View Managed AI + Wiki 생성',
       '계정 기반 공유 링크',
+    ],
+    featuresEn: [
+      'Everything in the free plan',
+      'Unlimited folders and files',
+      '6 premium design templates',
+      'Unlimited PDF and HTML export',
+      'Noleji View Managed AI and wiki generation',
+      'Account-based share links',
     ],
     limits: {
       maxFolders: Infinity,
@@ -51,6 +70,7 @@ export const PRICING_PLANS: PricingPlan[] = [
       linkSharing: true,
     },
     cta: '구독 시작하기',
+    ctaEn: 'Start subscription',
     highlighted: true,
   },
   {
@@ -59,12 +79,20 @@ export const PRICING_PLANS: PricingPlan[] = [
     nameEn: 'Lifetime',
     price: '₩49,000',
     priceNote: '1회 결제 · 장기 사용자를 위한 할인',
+    priceNoteEn: 'One-time payment · discounted for long-term users',
     features: [
       '월간 구독의 모든 기능',
       '커스텀 디자인 템플릿',
       '우선 지원',
       '새 기능 얼리 액세스',
       '평생 업데이트 보장',
+    ],
+    featuresEn: [
+      'Everything in the monthly plan',
+      'Custom design templates',
+      'Priority support',
+      'Early access to new features',
+      'Lifetime updates included',
     ],
     limits: {
       maxFolders: Infinity,
@@ -76,6 +104,7 @@ export const PRICING_PLANS: PricingPlan[] = [
       linkSharing: true,
     },
     cta: '평생 구독하기',
+    ctaEn: 'Get lifetime access',
     highlighted: false,
   },
 ];

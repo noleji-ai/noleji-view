@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "description": "AI-powered markdown knowledge management tool",
-  "homepage": "https://noleji-ai.github.io/docwise",
+  "homepage": "https://noleji.synology.me/apps/noleji-view",
   "repository": {
     "type": "git",
     "url": "https://github.com/noleji-ai/docwise.git"

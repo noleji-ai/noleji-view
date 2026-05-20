@@ -8,7 +8,7 @@
 [![Vite](https://img.shields.io/badge/Vite-8-purple.svg)](https://vite.dev)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-blue.svg)](https://tailwindcss.com)
 
-> **Demo**: [https://noleji-ai.github.io/docwise](https://noleji-ai.github.io/docwise)
+> **Demo**: [https://noleji.synology.me/apps/noleji-view](https://noleji.synology.me/apps/noleji-view)
 
 ---
 
@@ -29,7 +29,7 @@ npm install
 npm run dev
 ```
 
-브라우저에서 `http://localhost:5173/docwise/` 접속
+브라우저에서 `http://localhost:5173/apps/noleji-view/` 접속
 
 ## Tech Stack
 

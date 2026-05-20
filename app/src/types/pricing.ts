@@ -1,4 +1,5 @@
 export type PricingTier = 'free' | 'monthly' | 'lifetime';
+export type PricingLocale = 'ko' | 'en';
 
 export interface PricingPlan {
   tier: PricingTier;
@@ -6,9 +7,12 @@ export interface PricingPlan {
   nameEn: string;
   price: string;
   priceNote: string;
+  priceNoteEn: string;
   features: string[];
+  featuresEn: string[];
   limits: FeatureLimits;
   cta: string;
+  ctaEn: string;
   highlighted: boolean;
 }
 
