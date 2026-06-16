@@ -1,238 +1,155 @@
-# docwise v1.0 — 서비스 설명서
+# Noleji View v1.0 — 서비스 설명서
 
 ## 개요
 
-**docwise**는 AI 기반 마크다운 지식 관리 도구입니다. 웹 앱과 macOS 데스크톱 앱(Electron)을 모두 제공하며, 마크다운 문서 작성/관리/공유를 위한 올인원 솔루션입니다.
+**Noleji View**는 Markdown/HTML 문서를 작성하고, 디자인 스타일을 적용해 미리보기/내보내기하며, 문서 폴더를 탐색 가능한 지식 체계로 바꾸는 로컬 우선 문서 워크스페이스입니다.
 
-- **웹 데모**: https://noleji-ai.github.io/docwise
-- **라이선스**: MIT
-- **버전**: 1.0.0
+- 웹 데모: https://noleji.synology.me/apps/noleji-view
+- GitHub: https://github.com/noleji-ai/noleji-view
+- macOS 번들 ID: `com.noleji.view`
+- 배포 파일: `Noleji-View-1.0.0-arm64.dmg`
+- 라이선스: MIT
 
----
+## 현재 기능
 
-## 핵심 기능
+### 1. Markdown/HTML 편집과 미리보기
 
-### 1. 마크다운 편집기
-- Obsidian 스타일 마크다운 툴바 (헤딩, 볼드, 이탤릭, 코드블록, 리스트 등)
-- 실시간 미리보기 (unified + remark + rehype 파이프라인)
-- GFM(GitHub Flavored Markdown) 완벽 지원 (테이블, 체크리스트, 코드 하이라이팅)
-- **리사이즈 가능한 스플릿 패인** — 에디터/미리보기 비율을 드래그로 20~80% 조절
+- Markdown 편집, HTML 문서 모드, 실시간 미리보기
+- GFM 테이블, 체크리스트, 코드블록, 코드 하이라이팅
+- 찾기/바꾸기, 툴바 기반 Markdown 서식 삽입
+- 에디터/미리보기 스플릿 패인 조절
 
-### 2. 폴더/파일 관리
-- 워크스페이스 기반 폴더 트리 + 파일 목록
-- 파일 생성/이름변경/삭제/다운로드
-- **파일 가져오기** — MD/HTML/TXT + 이미지 동시 임포트 (이미지 base64 자동 변환)
-- **파일 이동** — 우클릭 "폴더로 이동" 메뉴 + 드래그 앤 드롭
-- 컨텍스트 메뉴 (우클릭)
+### 2. 6개 디자인 스타일
 
-### 3. 6종 프리미엄 디자인 템플릿
-- Apple, Stripe, Linear, Vercel, Mistral, Asome 스타일
-- 인스펙터 패널에서 원클릭 적용
-- 폰트 사이즈, 줄 간격, 여백, 문서 폭 실시간 조절
-- 다크/라이트 모드
+Noleji View는 문서 성격에 맞춰 다음 6개 스타일을 적용할 수 있습니다.
 
-### 4. AI 지식 체계 생성 (Karpathy Wiki)
-- LLM 연동 (OpenAI, Anthropic, 로컬 LLM)
-- 폴더 내 문서를 분석하여 엔티티/개념/요약 기반 위키 자동 생성
-- 생성된 지식 체계를 서브폴더로 관리
+- Apple
+- Stripe
+- Linear
+- Vercel
+- Mistral
+- Asome
 
-### 5. 내보내기
-- **MD 다운로드** — 원본 마크다운
-- **HTML 내보내기** — 스타일 적용된 단독 HTML
-- **PDF 내보내기** — A4 페이지 가이드, jsPDF + html2canvas
+스타일은 미리보기, viewer, HTML/PDF 내보내기 흐름에서 일관되게 사용됩니다.
 
-### 6. 공유 (Publish & Share)
-- **내부 공유** — HTML 파일 직접 다운로드
-- **외부 공유** — 링크 생성 후 클립보드 복사
-  - 무료: localStorage 기반 LAN 공유 (같은 네트워크에서만 접근)
-  - 유료: **GitHub Gist 기반 영구 링크** (어디서든 접근 가능)
-- **문서 포크** — 공유 받은 문서를 내 저장공간에 저장
+### 3. macOS 파일 연결
 
-### 7. macOS 데스크톱 앱 (Electron)
-- `.md`, `.html`, `.htm` 파일 더블클릭으로 뷰어 열기
-- 뷰어 → "수정하기" 버튼으로 본체 에디터 전환
-- **앱 메뉴바** — 파일/편집/보기(줌 인·아웃·리셋)/윈도우
-- macOS 트래픽라이트 + 윈도우 드래그 지원
-- **미리보기 버튼** — 에디터에서 뷰어 윈도우 직접 열기
-- 파일 연결 설정 (기본 앱으로 등록)
+Electron 데스크톱 앱은 Markdown/HTML viewer 역할로 등록됩니다.
 
-### 8. 요금제
+- `.md`, `.markdown`
+- `.html`, `.htm`
+- Info.plist `CFBundleDocumentTypes`
+- app id `com.noleji.view`
+- product name `Noleji View`
+
+Finder의 "다음으로 열기"와 기본 앱 설정 안내를 통해 문서를 Noleji View로 열 수 있습니다.
+
+### 4. 첫 실행 3스텝 튜토리얼
+
+데스크톱 첫 실행 시 사용자는 다음 흐름을 안내받습니다.
+
+1. Markdown/HTML 파일 열기
+2. 문서 디자인 스타일 선택
+3. macOS 기본 앱 설정 방법 확인
+
+미공증/ad-hoc 배포를 고려해 우클릭 후 "열기" 안내도 DMG와 앱 내 튜토리얼에 포함됩니다.
+
+### 5. Karpathy Wiki 스타일 지식 체계
+
+선택한 폴더의 Markdown/HTML 문서를 분석해 `_지식체계` 하위 폴더를 생성합니다.
+
+생성 산출물은 항상 핵심 5개 파일로 정리됩니다.
+
+- `index.md` — 전체 구조와 이동 허브
+- `_overview.md` — 종합 개요와 원본 문서 요약
+- `_entities.md` — 핵심 엔티티 묶음
+- `_concepts.md` — 핵심 개념 묶음
+- `log.md` — 처리 로그와 생성 기록
+
+사용법 안내는 좌측 패널 hover 팝오버가 아니라 중앙 모달로 표시됩니다. 모달은 반투명 backdrop, 닫기 버튼, Esc 닫기, backdrop 클릭 닫기, `80vh` 높이 제한, 내부 스크롤을 사용해 작은 화면에서도 안내가 잘리지 않습니다.
+
+### 6. 내보내기와 공유
+
+- Markdown 다운로드
+- standalone HTML 내보내기
+- PDF 내보내기
+- Electron viewer 창 열기
+- 계정 기반 공유 링크 준비
+
+### 7. 요금제
+
 | 플랜 | 가격 | 주요 기능 |
-|------|------|----------|
-| Free | 무료 | 마크다운 편집, 6종 템플릿, 일 5회 프리미엄 기능 |
-| Monthly | $9/월 | 무제한 프리미엄, Gist 영구 링크, 무제한 지식 생성 |
-| Lifetime | $49 (1회) | Monthly 전체 기능 + 영구 라이선스 |
-
----
+| --- | ---: | --- |
+| Free | ₩0 | Markdown/HTML 편집, 로컬 자동저장, 클라우드 백업 준비, 3개 폴더, 폴더당 10개 파일, 2종 디자인 템플릿, 프리미엄 기능 하루 10회 체험 |
+| Monthly | ₩5,000/월 | 무제한 폴더/파일, 6종 디자인 템플릿, PDF/HTML 내보내기 무제한, Managed AI + Wiki 생성, 계정 기반 공유 링크 |
+| Lifetime | ₩30,000 1회 | 월간 기능 전체, 커스텀 디자인 템플릿, 우선 지원, 새 기능 얼리 액세스, 평생 업데이트 |
 
 ## 기술 스택
 
-| 분류 | 기술 | 버전 |
-|------|------|------|
-| **프레임워크** | React | 19 |
-| **언어** | TypeScript | 6 |
-| **빌드** | Vite | 8 |
-| **스타일링** | Tailwind CSS | 4 |
-| **마크다운** | unified + remark + rehype | 11 |
-| **코드 하이라이팅** | rehype-highlight | 7 |
-| **PDF** | jsPDF + html2canvas | 4 / 1 |
-| **라우팅** | React Router | 7 |
-| **아이콘** | Lucide React | 1.8 |
-| **데스크톱** | Electron | 33 |
-| **패키징** | electron-builder | 25 |
+| 분류 | 기술 |
+| --- | --- |
+| Framework | React 19 |
+| Language | TypeScript 6 |
+| Build | Vite 8 |
+| Desktop | Electron 33 |
+| Packaging | electron-builder 25 + hdiutil UDZO |
+| Markdown | unified / remark / rehype |
+| Export | jsPDF / html2canvas |
+| Icons | Lucide React |
 
----
+## 개발
+
+```bash
+cd app
+npm install
+npm run dev
+```
+
+데스크톱 빌드:
+
+```bash
+cd desktop
+npm install
+npm run build
+npm run package:dmg
+```
+
+`npm run package:dmg`는 다음을 수행합니다.
+
+1. `codesign --force --deep --sign -`로 ad-hoc 재서명
+2. `hdiutil`로 UDZO DMG 생성
+3. `hdiutil verify`로 이미지 검증
+4. quarantine xattr 시뮬레이션 후 `codesign --verify --deep --strict` 검증
+5. `deploy/nas-homepage-2026-05-25/apps/noleji-view/download/`에 DMG 출력
 
 ## 프로젝트 구조
 
-```
-docwise/
-├── app/                          # 웹 앱 (React + Vite)
-│   ├── src/
-│   │   ├── components/           # 공통 컴포넌트
-│   │   │   ├── ContextMenu.tsx
-│   │   │   ├── InlineEdit.tsx
-│   │   │   ├── MarkdownToolbar.tsx
-│   │   │   ├── PricingSection.tsx
-│   │   │   ├── SettingsModal.tsx  # 설정 (일반/에디터/AI/계정/뷰어)
-│   │   │   └── UsageBadge.tsx
-│   │   ├── data/
-│   │   │   ├── designTemplates.ts # 6종 디자인 템플릿 정의
-│   │   │   └── sampleContents.ts  # 샘플 문서 콘텐츠
-│   │   ├── hooks/
-│   │   │   ├── useAuth.ts        # 인증 (localStorage 기반)
-│   │   │   └── useMarkdownParser.ts # unified 파이프라인
-│   │   ├── pages/
-│   │   │   ├── EditorPage.tsx    # 메인 에디터 (핵심 ~1350줄)
-│   │   │   ├── LandingPage.tsx   # 랜딩 페이지
-│   │   │   ├── PricingPage.tsx   # 요금제 + Stripe 결제
-│   │   │   ├── SharedPage.tsx    # 공유 문서 뷰어
-│   │   │   └── ViewerPage.tsx    # 파일 뷰어 (읽기 전용)
-│   │   ├── services/
-│   │   │   ├── gistStorage.ts    # GitHub Gist API (영구 링크)
-│   │   │   ├── llmClient.ts     # LLM 연동 (OpenAI/Anthropic)
-│   │   │   ├── stripeCheckout.ts # Stripe Payment Link
-│   │   │   └── wiki.ts          # 위키 지식 체계 생성
-│   │   ├── shared/
-│   │   │   ├── settingsStore.ts  # 뷰어 설정 저장소
-│   │   │   └── viewerSettings.ts # 뷰어 설정 타입
-│   │   ├── types/
-│   │   │   ├── electron.d.ts    # Electron API 타입
-│   │   │   └── llm.ts           # LLM 설정 타입
-│   │   ├── utils/
-│   │   │   ├── featureGate.ts   # 무료/유료 기능 게이팅
-│   │   │   └── networkUtils.ts  # LAN IP 조회
-│   │   ├── main.tsx             # 앱 엔트리 (HashRouter/BrowserRouter)
-│   │   └── index.css            # 전역 스타일 + Electron CSS
-│   ├── public/                   # 정적 자산 (favicon 등)
-│   ├── vite.config.ts           # Vite 설정 (base: ./ or /docwise/)
-│   ├── tsconfig.json
-│   └── package.json
-├── desktop/                      # Electron 데스크톱 앱
-│   ├── src/
-│   │   ├── main.ts              # 메인 프로세스 (윈도우, 메뉴, IPC)
-│   │   ├── preload.ts           # contextBridge API
-│   │   ├── ipc/
-│   │   │   ├── fileOpen.ts      # 파일 읽기/저장 IPC
-│   │   │   └── settings.ts      # 설정 IPC
-│   │   ├── utils/
-│   │   │   └── fileAssociation.ts # macOS 파일 연결
-│   │   └── viewer/
-│   │       └── viewerWindow.ts  # 뷰어 윈도우 팩토리
-│   ├── build/                    # 앱 아이콘 (icon.icns)
-│   ├── tsconfig.json
-│   └── package.json
-├── .github/
-│   └── workflows/               # GitHub Actions (Pages 배포)
-├── BRAND_IDENTITY.md            # 브랜드 디자인 가이드
-├── CONTRIBUTING.md
-├── LICENSE                       # MIT
+```text
+noleji-view/
+├── app/                    # React + Vite 앱
+│   ├── src/components/     # 공통 UI
+│   ├── src/data/           # 디자인 템플릿, 샘플 문서, 요금제
+│   ├── src/pages/          # Editor, Viewer, Pricing, Landing 등
+│   ├── src/services/wiki/  # Karpathy Wiki 스타일 지식 생성
+│   └── src/shared/         # viewer settings
+├── desktop/                # Electron shell
+│   ├── src/main.ts         # 메인 프로세스
+│   ├── src/preload.ts      # contextBridge API
+│   ├── src/ipc/            # 파일/설정 IPC
+│   ├── src/utils/          # 파일 연결 안내
+│   └── scripts/create-dmg.sh
 ├── README.md
-└── SERVICE_DESCRIPTION.md       # 이 문서
+├── SERVICE_DESCRIPTION.md
+└── BRAND_IDENTITY.md
 ```
+
+## 정체성 기준
+
+- 제품명은 항상 **Noleji View**로 표기합니다.
+- repository는 `noleji-ai/noleji-view`입니다.
+- macOS app id는 `com.noleji.view`입니다.
+- 과거 제품명, 과거 macOS app id, 이전 외부 브랜드 표기는 신규 문서/메타데이터에 사용하지 않습니다.
 
 ---
 
-## 개발 환경 설정
-
-### 필수 조건
-- Node.js 20+
-- npm 10+
-
-### 웹 앱 개발
-```bash
-cd app
-npm install
-npm run dev
-# → http://localhost:5173/docwise/
-```
-
-### Electron 앱 개발
-```bash
-# 1. 웹 앱 빌드 (Electron 모드)
-cd app
-ELECTRON=true npm run build:electron
-
-# 2. Electron 메인 프로세스 빌드 + 실행
-cd ../desktop
-npm install
-npm run dev
-```
-
-### macOS 앱 패키징
-```bash
-# 웹 앱 + Electron 빌드 + DMG 생성
-cd desktop
-npm run build
-# → desktop/release/docwise-1.0.0-arm64.dmg
-```
-
-또는 단계별:
-```bash
-cd app && ELECTRON=true npm run build:electron
-cd ../desktop && npx tsc && ./node_modules/.bin/electron-builder --mac
-```
-
----
-
-## 주요 설정
-
-### Vite (`app/vite.config.ts`)
-- `base`: Electron 빌드 시 `'./'` (file:// 프로토콜), 웹 빌드 시 `'/docwise/'`
-- 환경변수 `ELECTRON=true`로 전환
-
-### Electron 빌드 (`desktop/package.json` → `build`)
-- `appId`: `com.coway.docwise`
-- `fileAssociations`: `.md`, `.html`, `.htm`
-- `extraResources`: `../app/dist` → `app-dist` (웹 앱 번들 포함)
-
-### 라우팅 (`app/src/main.tsx`)
-- Electron: `HashRouter` (file:// 프로토콜 호환)
-- 웹: `BrowserRouter` (basename: `/docwise`)
-- `window.electronAPI` 존재 여부로 자동 감지
-
----
-
-## 데이터 저장
-
-모든 데이터는 **로컬** 저장:
-- `localStorage` — 문서, 설정, 인증 상태, 사용량 카운터
-- `SAMPLE_CONTENTS` 객체 (in-memory) — 현재 세션 문서 내용
-- Electron: 로컬 파일 시스템 직접 읽기/쓰기
-
-서버 의존성 없음 (GitHub Gist 영구 링크 제외).
-
----
-
-## 미구현 / 향후 과제
-
-1. **Stripe 실제 연동** — 현재 플레이스홀더 Payment Link URL 사용
-2. **서버 기반 공유** — Gist 외에 자체 서버 기반 공유 옵션
-3. **Windows/Linux 빌드** — 현재 macOS만 지원
-4. **CodeMirror 에디터** — 현재 `<textarea>`, CodeMirror 6 전환 예정
-5. **실시간 협업** — 다중 사용자 동시 편집
-6. **코드 사이닝** — Apple Developer ID로 서명 필요 (현재 미서명)
-
----
-
-*docwise v1.0.0 | 2026-04-15 | Coway OpenWork*
+Noleji View v1.0.0 | 2026-06-16 | noleji-ai

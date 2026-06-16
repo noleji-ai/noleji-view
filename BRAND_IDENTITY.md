@@ -1,33 +1,63 @@
-# 🎨 docwise Brand Identity
+# Noleji View Brand Identity
 
-## 1. Minimalist SVG Logo
-```svg
-<svg width="400" height="400" viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Outer Wise-Circle -->
-  <circle cx="200" cy="200" r="180" stroke="#1A202C" stroke-width="12"/>
-  
-  <!-- Wise Eye + Document Stack Symbol -->
-  <path d="M120 180C120 180 160 140 200 140C240 140 280 180 280 180C280 180 240 220 200 220C160 220 120 180 120 180Z" stroke="#10B981" stroke-width="8" stroke-linecap="round"/>
-  <circle cx="200" cy="180" r="25" fill="#10B981"/>
-  
-  <!-- Document Layers -->
-  <rect x="150" y="240" width="100" height="60" rx="4" fill="#1A202C" fill-opacity="0.1"/>
-  <rect x="160" y="255" width="80" height="3" rx="1.5" fill="#1A202C"/>
-  <rect x="160" y="265" width="80" height="3" rx="1.5" fill="#1A202C"/>
-  <rect x="160" y="275" width="50" height="3" rx="1.5" fill="#10B981"/>
-</svg>
-```
+## Product Name
 
-## 2. Color Palette (Clean Wiki)
-- **Primary**: #1A202C (Deep Navy - Trust)
-- **Accent**: #10B981 (Emerald Green - Wisdom)
-- **Background**: #FFFFFF (Pure White)
-- **Muted**: #F7FAFC (Light Gray - Workspace)
+Noleji View
 
-## 3. Typography
-- **Headlines**: Inter (Sans-serif) / Bold
-- **Body**: Public Sans (High Readability)
-- **Wiki Content**: Source Serif 4 (Classical intellectual feel)
+Use the full name in public copy, documentation, desktop packaging, and support material. Avoid legacy product names or previous external-brand phrasing in current-facing copy.
+
+## Positioning
+
+Noleji View is a launch-ready Markdown and HTML workspace for people who need local-first document work, polished previews, exportable artifacts, and AI-assisted knowledge structuring.
+
+## Voice
+
+- Clear and practical
+- Calm, technical, and trustworthy
+- Korean-first for operator and launch copy, with English labels where they improve scanability
+- No inflated claims about autonomous publishing or payment readiness beyond what is implemented
+
+## Visual System
+
+### Core Colors
+
+- Primary: `#1A202C`
+- Accent: `#10B981`
+- Knowledge accent: `#7C3AED`
+- Background: `#FFFFFF`
+- Muted workspace: `#F7FAFC`
+- Border: `#E2E8F0`
+
+### Design Styles
+
+The product exposes 6 document design styles:
+
+1. Apple
+2. Stripe
+3. Linear
+4. Vercel
+5. Mistral
+6. Asome
+
+### UI Principles
+
+- The editor should feel like a focused productivity tool, not a marketing page.
+- Repeated document controls can use compact panels and cards.
+- Long guidance must use centered modals or scrollable panels, not clipped hover-only popovers.
+- macOS setup copy should explicitly mention right-click Open for ad-hoc signed builds.
+
+## Product Facts
+
+- Demo URL: https://noleji.synology.me/apps/noleji-view
+- GitHub repository: https://github.com/noleji-ai/noleji-view
+- macOS app id: `com.noleji.view`
+- DMG artifact: `Noleji-View-1.0.0-arm64.dmg`
+- Pricing: Free, Monthly ₩5,000, Lifetime ₩30,000
+
+## Logo Direction
+
+The current app mark is a compact `v` tile used in the desktop shell and public UI. Keep it simple and legible at toolbar sizes. Future logo work should preserve the local-first document viewer feel and avoid generic AI sparkle branding as the primary mark.
 
 ---
-*Created by docwise Design Agent (2026.04.14)*
+
+Updated for Noleji View R2 identity alignment, 2026-06-16.

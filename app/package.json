@@ -1,15 +1,16 @@
 {
-  "name": "docwise",
+  "name": "noleji-view",
   "private": false,
   "version": "1.0.0",
   "type": "module",
-  "description": "AI-powered markdown knowledge management tool",
+  "description": "Noleji View — local-first Markdown/HTML workspace with macOS DMG, file associations, design styles, and wiki generation",
   "homepage": "https://noleji.synology.me/apps/noleji-view",
   "repository": {
     "type": "git",
-    "url": "https://github.com/noleji-ai/docwise.git"
+    "url": "https://github.com/noleji-ai/noleji-view.git"
   },
   "keywords": [
+    "noleji-view",
     "markdown",
     "knowledge-management",
     "editor",

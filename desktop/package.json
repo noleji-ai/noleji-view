@@ -1,7 +1,12 @@
 {
-  "name": "docwise-desktop",
+  "name": "noleji-view-desktop",
   "version": "1.0.0",
-  "description": "docwise Desktop — AI 기반 마크다운 지식 관리 도구",
+  "description": "Noleji View Desktop — macOS Markdown/HTML viewer and editor with file associations, onboarding, and DMG packaging",
+  "homepage": "https://noleji.synology.me/apps/noleji-view",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/noleji-ai/noleji-view.git"
+  },
   "main": "dist/main.js",
   "scripts": {
     "dev": "tsc && electron .",
@@ -16,18 +21,82 @@
     "typescript": "~6.0.2"
   },
   "build": {
-    "appId": "com.coway.docwise",
-    "productName": "docwise",
+    "appId": "com.noleji.view",
+    "productName": "Noleji View",
+    "artifactName": "Noleji-View-${version}-${arch}.${ext}",
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "build/icon.icns",
-      "target": ["dmg", "zip"]
+      "target": ["dmg", "zip"],
+      "extendInfo": {
+        "CFBundleDisplayName": "Noleji View",
+        "CFBundleName": "Noleji View",
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "Markdown Document",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "net.daringfireball.markdown",
+              "public.markdown",
+              "public.plain-text"
+            ],
+            "CFBundleTypeExtensions": [
+              "md",
+              "markdown"
+            ]
+          },
+          {
+            "CFBundleTypeName": "HTML Document",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "public.html"
+            ],
+            "CFBundleTypeExtensions": [
+              "html",
+              "htm"
+            ]
+          }
+        ],
+        "UTImportedTypeDeclarations": [
+          {
+            "UTTypeIdentifier": "net.daringfireball.markdown",
+            "UTTypeDescription": "Markdown Document",
+            "UTTypeConformsTo": [
+              "public.plain-text"
+            ],
+            "UTTypeTagSpecification": {
+              "public.filename-extension": [
+                "md",
+                "markdown"
+              ],
+              "public.mime-type": [
+                "text/markdown",
+                "text/x-markdown"
+              ]
+            }
+          },
+          {
+            "UTTypeIdentifier": "public.markdown",
+            "UTTypeDescription": "Markdown Document",
+            "UTTypeConformsTo": [
+              "public.plain-text"
+            ],
+            "UTTypeTagSpecification": {
+              "public.filename-extension": [
+                "md",
+                "markdown"
+              ],
+              "public.mime-type": [
+                "text/markdown",
+                "text/x-markdown"
+              ]
+            }
+          }
+        ]
+      }
     },
-    "fileAssociations": [
-      { "ext": "md", "name": "Markdown Document", "role": "Viewer" },
-      { "ext": "html", "name": "HTML Document", "role": "Viewer" },
-      { "ext": "htm", "name": "HTML Document", "role": "Viewer" }
-    ],
     "directories": {
       "output": "release"
     },
